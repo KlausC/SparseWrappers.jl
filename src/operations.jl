@@ -27,3 +27,36 @@ function multiply2(A::AbstractMatrix{T}, B::Union{AbstractVector{T},AbstractMatr
     v
 end
 
+# converting to a SparseMatrixCSC
+function sparse2(A::AbstractMatrix{T}) where T<:Number
+    
+    Ti = Int
+    m, n = size(A)
+    I = Ti[]
+    J = Ti[]
+    Z = T[]
+    colptr = zeros(Ti, n+1)
+    colptr[1] = 1
+    for (i, j, z) in nziterator(A)
+        push!(I, i)
+        push!(J, j)
+        push!(Z, z)
+        colptr[j+1] += 1
+    end
+    cumsum!(colptr, colptr)
+    p = collect(1:length(I))
+    p = sortperm2!(p, J, I)
+    SparseMatrixCSC{T,Ti}(m, n, colptr, I[p], Z[p])
+end
+
+# sorting two integer vectors
+function sortperm2!(p::Vector{Int}, v1::Vector{T}, v2::Vector{T}) where T<:Integer
+    n = length(v1)
+    n == length(v2) || throw(DimensionMismatch("vectors need equal lengths"))
+    function lt(i::Int, j::Int)
+        @inbounds begin v1[i] < v1[j] || v1[i] === v1[j] &&  v2[i] < v2[j] end
+    end
+    sort!(p, lt=lt)
+    p
+end
+
