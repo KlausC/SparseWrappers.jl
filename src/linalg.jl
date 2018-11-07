@@ -15,42 +15,47 @@ mul!(y::AbstractVector, A::SparseMatrixCSCSymAdj, x::AbstractVector) = mul!(y, A
 
 # C .= α * C + β * A * B
 function mul!(C::StridedVecOrMat, sA::SparseMatrixCSCSymAdj, B::StridedVecOrMat, α::Number, β::Number)
-    
+    _mul!(C, sA, B, Val(sA.uplo=='U'), α, β)
+end
+
+function _mul!(C, sA, B, uplo::Val{UPLO}, α, β) where UPLO
     A = sA.data
     n = A.n
-    n == size(B, 1) == size(C, 1) || throw(DimensionMismatch())
-    size(B, 2) == size(C, 2) || throw(DimensionMismatch())
+    m = size(B, 2)
+    n == size(B, 1) == size(C, 1) && m == size(C, 2) || throw(DimensionMismatch())
     colp = getcolptr(A)
     rv = getrowval(A)
     nzv = getnzval(A)
-    uplo = sA.uplo == 'U'
-    adjup = !uplo && sA isa Hermitian
-    adjlow = uplo && sA isa Hermitian
+    adj = sA isa Hermitian
     z = zero(eltype(C))
     if β != 1 
         β != 0 ? rmul!(C, β) : fill!(C, z)
     end
-    jk = 0
+    α == 0 && return C
     for k = 1:size(C, 2)
         @inbounds for col = 1:A.n
-            αxj = α * B[col+jk]
+            αxj = α * B[col,k]
             sumcol = z
-            for j = rowindrange(rv, colp, col, uplo)
+            for j = nzrange(colp, col, uplo)
                 row = rv[j]
                 aarc = nzv[j]
                 if row == col 
-                    C[row+jk] += real(aarc) * αxj
-                elseif uplo == (row < col)
-                    C[row+jk] += possible_adjoint(adjup, aarc) * αxj
-                    sumcol += possible_adjoint(adjlow, aarc) * B[row+jk]
+                    sumcol += real(aarc) * αxj
+                elseif UPLO == (row < col)
+                    C[row,k] += aarc * αxj
+                    sumcol += possible_adjoint(adj, aarc) * B[row,k]
+                else
+                    break
                 end
             end
-            C[col+jk] += α * sumcol
+            C[col,k] += α * sumcol
         end
-        jk += n
     end
     C
 end
+
+nzrange(colp, col, ::Val{true}) = @inbounds colp[col]:colp[col+1]-1
+nzrange(colp, col, ::Val{false}) = @inbounds colp[col+1]-1:-1:colp[col]
 
 """
     rowindrange(rowval, colptr, col, uplo::Bool)
@@ -59,6 +64,7 @@ For a sparse matrix with `rowval` and `colptr`, return the range of indices in `
 are dedicated to contain the matrix row indices `1:col` (if `uplo`)
 respectively `col:end` (if `!uplo`) in colum `col`.
 Assumes that `rowval`is sorted increasingly.
+-- unused --
 """
 function rowindrange(rv::Vector{Ti}, colp::AbstractVector{Ti}, col::Ti, uplo::Bool) where Ti<:Integer
     r1 = colp[col]
