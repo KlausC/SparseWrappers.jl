@@ -27,6 +27,29 @@ function multiply2(A::AbstractMatrix{T}, B::Union{AbstractVector{T},AbstractMatr
     v
 end
 
+# for comparison: multiplication of a Symmetirc(A, :U)
+function multiply3(A::Symmetric{T,<:SparseMatrixCSC}, B::Union{AbstractVector{T},AbstractMatrix{T}}) where T<:Number
+    
+    m, n = size(A)
+    size(B, 1) == n || throw(DimensionMismatch("matrix A has dimensions $(size(A)), vector B has length $(length(B))"))
+    colptr = A.data.colptr
+    rowval = A.data.rowval
+    nzval = A.data.nzval
+    v = zeros(T, m, size(B)[2:end]...)
+
+    for j = 1:n, k = colptr[j]:colptr[j+1]-1
+        i = rowval[k]
+        if i <= j
+            aij = nzval[k]
+            v[i,:] += B[j,:] * aij
+            if i < j
+                v[j,:] += B[i,:] * aij
+            end
+        end
+    end
+    v
+end
+
 # converting to a SparseMatrixCSC
 function sparse2(A::AbstractMatrix{T}) where T<:Number
     
