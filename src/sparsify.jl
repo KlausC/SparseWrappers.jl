@@ -1,5 +1,58 @@
 import LinearAlgebra: AbstractTriangular, UnitLowerTriangular, UnitUpperTriangular
-import SparseArrays: LowerTriangularPlain, UpperTriangularPlain
+import SparseArrays: LowerTriangularPlain, UpperTriangularPlain, issparse
+
+"""
+    issparse(S)
+
+Returns `true` if `S` is sparse, and `false` otherwise.
+
+# Examples
+```jldoctest
+julia> sv = sparsevec([1, 4], [2.3, 2.2], 10)
+10-element SparseVector{Float64,Int64} with 2 stored entries:
+  [1 ]  =  2.3
+  [4 ]  =  2.2
+
+julia> issparse(sv)
+true
+
+julia> issparse(Array(sv))
+false
+```
+"""
+issparse(::T) where T<:AbstractArray = issparse(T)
+issparse(T::Type) = walk_wrapper(_issparse, T)
+_issparse(::Type{<:Any}) = false
+_issparse(::Type{<:AbstractSparseArray}) = true
+
+import LinearAlgebra: Symmetric, Hermitian, LowerTriangular, UnitLowerTriangular
+import LinearAlgebra: UpperTriangular, UnitUpperTriangular, Transpose, Adjoint
+
+isupper(A::AbstractArray) = walk_wrapper(_isupper, A)
+_isupper(::Any) = missing
+_isupper(::Union{UpperTriangular,UnitUpperTriangular}) = true
+_isupper(A::Union{Symmetric,Hermitian}) = A.uplo == 'U'
+_islower(::Union{LowerTriangular,UnitLowerTriangular}) = true
+_islower(A::Union{Symmetric,Hermitian}) = A.uplo == 'L'
+
+walk_wrapper(f::Function, x::Any) = f(x)
+for (wr, da2) in ((Symmetric, :data), (Hermitian, :data),
+                  (LowerTriangular, :data), (UnitLowerTriangular, :data),
+                  (UpperTriangular, :data), (UnitUpperTriangular, :data),
+                  (Transpose, :parent), (Adjoint, :parent),
+                  (SubArray, :parent))
+
+    pl = wr === SubArray ? :($wr{<:Any,<:Any,T}) : :($wr{<:Any,T})
+    dat = wr in (SubArray, Transpose, Adjoint) ? :parent : :data
+    @eval function walk_wrapper(f::Function, ::Type{<:$pl}) where T
+        walk_wrapper(f, T)
+    end
+    @eval function walk_wrapper(f::Function, A::$pl) where T
+        res = f(A)
+        ismissing(res) && ( res = walk_wrapper(f, A.$dat) )
+        ifelse(ismissing(res), false, res)
+    end
+end
 
 """
     isbasedsparse(A::AbstractArray)
