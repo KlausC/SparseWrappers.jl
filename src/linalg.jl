@@ -54,11 +54,10 @@ end
 nzrangeuplo(sA, A, i) = sA.uplo == 'U' ? nzrangeup(A, i) : nzrangelo(A, i)
 function nzrangeup(A, i)
     r = nzrange(A, i); r1 = r.start; r2 = r.stop
-    # r1, r2 = extrema(nzrange(A, i))
     r1:searchsortedlast(rowvals(A), i, r1, r2, Forward)
 end
 function nzrangelo(A, i)
-    r1, r2 = extrema(nzrange(A, i))
+    r = nzrange(A, i); r1 = r.start; r2 = r.stop
     searchsortedfirst(rowvals(A), i, r1, r2, Forward):r2
 end
 #==

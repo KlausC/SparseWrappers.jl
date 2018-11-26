@@ -22,8 +22,11 @@ false
 """
 issparse(::T) where T<:AbstractArray = issparse(T)
 issparse(T::Type) = walk_wrapper(_issparse, T)
-_issparse(::Type{<:Any}) = false
+_issparse(::Type) = false
 _issparse(::Type{<:AbstractSparseArray}) = true
+
+iswrappedsparse(::Type{<:AbstractSparseArray}) = false
+iswrappedsparse(T::Type) = issparse(T)
 
 import LinearAlgebra: Symmetric, Hermitian, LowerTriangular, UnitLowerTriangular
 import LinearAlgebra: UpperTriangular, UnitUpperTriangular, Transpose, Adjoint
@@ -36,11 +39,11 @@ _islower(::Union{LowerTriangular,UnitLowerTriangular}) = true
 _islower(A::Union{Symmetric,Hermitian}) = A.uplo == 'L'
 
 walk_wrapper(f::Function, x::Any) = f(x)
-for (wr, da2) in ((Symmetric, :data), (Hermitian, :data),
-                  (LowerTriangular, :data), (UnitLowerTriangular, :data),
-                  (UpperTriangular, :data), (UnitUpperTriangular, :data),
-                  (Transpose, :parent), (Adjoint, :parent),
-                  (SubArray, :parent))
+for wr in (Symmetric, Hermitian,
+                  LowerTriangular, UnitLowerTriangular,
+                  UpperTriangular, UnitUpperTriangular,
+                  Transpose, Adjoint,
+                  SubArray)
 
     pl = wr === SubArray ? :($wr{<:Any,<:Any,T}) : :($wr{<:Any,T})
     dat = wr in (SubArray, Transpose, Adjoint) ? :parent : :data
