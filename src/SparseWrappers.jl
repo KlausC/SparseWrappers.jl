@@ -23,6 +23,7 @@ const SparseMatrixCSCSymmHerm{Tv,Ti} = Union{Symmetric{Tv,<:SparseMatrixCSCUnion
 include("sparsify.jl")
 #include("combine.jl")
 #include("semigroup.jl")
-include("linalg.jl")
+#include("linalg.jl")
+include("fallback.jl")
 
 end # module
