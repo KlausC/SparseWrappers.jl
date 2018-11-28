@@ -105,3 +105,47 @@ function linop(A::AbstractMatrix)
     sum
 end
 
+# find all methods with at least one argument of type `AbstractMatrix`
+function allmethods()
+    meths = Method[]
+    for mod = Base.loaded_modules_array()
+        for nm in names(mod)
+            if isdefined(mod, nm)
+                f = getfield(mod, nm)
+                if isa(f, Function)
+                    append!(meths, methods(f))
+                end
+            end
+        end
+    end
+    meths
+end
+
+parameters(m::Method) = parameters(m.sig)
+parameters(u::UnionAll) = parameters(u.body)
+parameters(d::DataType) = d.parameters
+
+name(u::UnionAll) = name(u.body)
+name(d::DataType) = d.name
+name(u::Union) = u
+
+
+# for one method check if there is a related method with same name and `AbstractMatrix`
+# replaced by `AbstractSparseMatrix`
+function relatedmethods(m::Method)
+    p = parameters(m)
+    f = p[1].instance
+    an = (AbstractMatrix)
+    repl(x) = (x isa Type && an <: x) ? (SparseMatrixCSC{T} where T) : x
+    args = Tuple(repl(x) for x in p[2:end])
+    # println("which($f, $args)")
+    rel = which(f, args)
+    rel == m ? nothing : (m, rel)
+end
+
+
+
+
+
+
+

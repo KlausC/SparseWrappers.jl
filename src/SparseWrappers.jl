@@ -7,13 +7,26 @@ import LinearAlgebra:   mul!
 import SparseArrays:    possible_adjoint, SparseMatrixCSCUnion
 import Base.Order: Forward
 
+
+struct XSubArray{T,Ti,N,S<:SparseMatrixCSC{T,Ti},I,B,R<:AbstractVector{Ti}} <: AbstractSparseArray{T,Ti,N}
+    sub::SubArray{T,N,S,I,B}
+    rowval::R
+end
+function XSubArray(s::SubArray{T,N,SparseMatrixCSC{T,Ti},I,B}) where {T,N,Ti,I,B}
+    rv = rowvals(s)
+    XSubArray(s, rv)
+end
+
+const SparseUnion{Tv,Ti} = Union{SparseMatrixCSC{Tv,Ti},
+                                 XSubArray{Tv,Ti,2,SparseMatrixCSC{Tv,Ti},<:Tuple,false}}
+
 """
     SparseMatrixCSCSymmHerm
 
 `Symmetric` or `Hermitian` of a `SparseMatrixCSC` or `SparseMatrixCSCView`.
 """
-const SparseMatrixCSCSymmHerm{Tv,Ti} = Union{Symmetric{Tv,<:SparseMatrixCSCUnion{Tv,Ti}},
-                                            Hermitian{Tv,<:SparseMatrixCSCUnion{Tv,Ti}}}
+const SparseMatrixCSCSymmHerm{Tv,Ti} = Union{Symmetric{Tv,<:SparseUnion{Tv,Ti}},
+                                            Hermitian{Tv,<:SparseUnion{Tv,Ti}}}
 
 #export nziterator
 #export Conjugate, HermitianTriangular
@@ -25,5 +38,6 @@ include("sparsify.jl")
 #include("semigroup.jl")
 include("linalg.jl")
 include("fallback.jl")
+include("views.jl")
 
 end # module
