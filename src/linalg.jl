@@ -28,7 +28,7 @@ function _mul!(nzrang::Function, fadj::Function, C, sA, B, α, β)
         β != 0 ? rmul!(C, β) : fill!(C, z)
     end
     for k = 1:m
-        @inbounds for col = 1:n
+        for col = 1:n
             αxj = α * B[col,k]
             sumcol = z
             for j = nzrang(A, col)
@@ -65,5 +65,68 @@ function nzrangelo(A, r::AbstractUnitRange, i)
 end
 function nzrangelo(A, r::AbstractVector{<:Integer}, i)
     view(r, searchsortedfirst(view(rowvals(A), r), i):length(r))
+end
+
+# Gustavsen's matrix multiplication algorithm revisited
+function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti}
+    mA, nA = size(A)
+    mB, nB = size(B)
+    nA == mB || throw(DimensionMismatch())
+
+    rowvalA = rowvals(A); nzvalA = nonzeros(A)
+    rowvalB = rowvals(B); nzvalB = nonzeros(B)
+    nnzC = estimate_mulsize(mA, nnz(A), nA, nnz(B), nB)
+    colptrC = Vector{Ti}(undef, nB+1)
+    rowvalC = Vector{Ti}(undef, nnzC)
+    nzvalC = Vector{Tv}(undef, nnzC)
+
+    @inbounds begin
+        ip = 1
+        x  = Vector{Tv}(undef, mA)
+        xb = BitArray(undef, mA)
+        for i in 1:nB
+            fill!(xb, false)
+            if ip + mA - 1 > nnzC
+                nnzC += max(mA, nnzC>>2)
+                resize!(rowvalC, nnzC)
+                resize!(nzvalC, nnzC)
+            end
+            colptrC[i] = ip 
+            for jp in nzrange(B, i)
+                nzB = nzvalB[jp]
+                j = rowvalB[jp]
+                for kp in nzrange(A, j)
+                    nzC = nzvalA[kp] * nzB
+                    k = rowvalA[kp]
+                    if xb[k]
+                        x[k] += nzC
+                    else
+                        x[k] = nzC
+                        xb[k] = true
+                    end
+                end
+            end
+            for k = 1:mA
+                if xb[k]
+                    nzvalC[ip] = x[k]
+                    rowvalC[ip] = k
+                    ip += 1
+                end
+            end
+        end
+        colptrC[nB+1] = ip
+    end
+
+    ip -= 1
+    resize!(rowvalC, ip)
+    resize!(nzvalC, ip)
+
+    # This modification of Gustavson algorithm has sorted row indices.
+    SparseMatrixCSC(mA, nB, colptrC, rowvalC, nzvalC)
+end
+
+function estimate_mulsize(m::Integer, nnzA::Integer, n::Integer, nnzB::Integer, k::Integer)
+    p = (nnzA / (m * n)) * (nnzB / (n * k))
+    Int(ceil(-expm1(log1p(-p) * n) * m * k)) # is (1 - (1 - p)^n) * m * k
 end
 
