@@ -18,6 +18,7 @@ function XSubArray(s::SubArray{T,N,SparseMatrixCSC{T,Ti},I,B}) where {T,N,Ti,I,B
 end
 
 const SparseUnion{Tv,Ti} = Union{SparseMatrixCSC{Tv,Ti},
+                                 SubArray{Tv,2,SparseMatrixCSC{Tv,Ti},<:Tuple,false},
                                  XSubArray{Tv,Ti,2,SparseMatrixCSC{Tv,Ti},<:Tuple,false}}
 
 """

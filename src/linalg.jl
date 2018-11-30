@@ -68,15 +68,15 @@ function nzrangelo(A, r::AbstractVector{<:Integer}, i)
 end
 
 # Gustavsen's matrix multiplication algorithm revisited
-function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti}
+function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::Union{<:SparseMatrixCSC{Tv,Ti},<:SparseVector{Tv,Ti}}) where {Tv,Ti,N}
     mA, nA = size(A)
-    mB, nB = size(B)
-    nA == mB || throw(DimensionMismatch())
+    nB = size(B, 2)
+    nA == size(B, 1) || throw(DimensionMismatch())
 
     rowvalA = rowvals(A); nzvalA = nonzeros(A)
     rowvalB = rowvals(B); nzvalB = nonzeros(B)
     nnzC = estimate_mulsize(mA, nnz(A), nA, nnz(B), nB)
-    colptrC = Vector{Ti}(undef, nB+1)
+    if B isa SparseMatrixCSC; colptrC = Vector{Ti}(undef, nB+1) end
     rowvalC = Vector{Ti}(undef, nnzC)
     nzvalC = Vector{Tv}(undef, nnzC)
 
@@ -91,7 +91,7 @@ function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti}) where {T
                 resize!(rowvalC, nnzC)
                 resize!(nzvalC, nnzC)
             end
-            colptrC[i] = ip 
+            if B isa SparseMatrixCSC; colptrC[i] = ip end
             for jp in nzrange(B, i)
                 nzB = nzvalB[jp]
                 j = rowvalB[jp]
@@ -106,15 +106,13 @@ function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti}) where {T
                     end
                 end
             end
-            for k = 1:mA
-                if xb[k]
-                    nzvalC[ip] = x[k]
-                    rowvalC[ip] = k
-                    ip += 1
-                end
+            for k in findall(xb)
+                nzvalC[ip] = x[k]
+                rowvalC[ip] = k
+                ip += 1
             end
         end
-        colptrC[nB+1] = ip
+        if B isa SparseMatrixCSC; colptrC[nB+1] = ip end
     end
 
     ip -= 1
@@ -122,7 +120,11 @@ function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti}) where {T
     resize!(nzvalC, ip)
 
     # This modification of Gustavson algorithm has sorted row indices.
-    SparseMatrixCSC(mA, nB, colptrC, rowvalC, nzvalC)
+    if B isa SparseMatrixCSC
+        SparseMatrixCSC(mA, nB, colptrC, rowvalC, nzvalC)
+    else
+        SparseVector(mA, rowvalC, nzvalC)
+    end
 end
 
 function estimate_mulsize(m::Integer, nnzA::Integer, n::Integer, nnzB::Integer, k::Integer)
