@@ -1,24 +1,23 @@
 
-import SparseArrays: nzrange, rowvals, nonzeros
+import SparseArrays: nzrange, rowvals, nonzeros, SparseMatrixCSCView
 
+sparseaccess(A::SparseMatrixCSC) = A
+sparseaccess(A::SubArray{<:Any,2,<:SparseMatrixCSC{<:Any,<:Any},<:Tuple{I,<:Any},false}) where
+    I<:Union{Base.Slice{<:Base.OneTo},AbstractUnitRange} = A
+
+sparseaccess(A::SubArray) = XSubArray(A)
+
+nonzeros(S::SubArray) = nonzeros(S.parent)
 nonzeros(S::XSubArray{<:Any,<:Integer,2}) = nonzeros(S.sub.parent)
 
-function nzrange(S::XSubArray{<:Any,<:Integer,2,<:Any,<:Tuple{<:Base.Slice{<:Base.OneTo},<:AbstractVector{<:Integer}},false}, i::Integer)
-    nzrange(S.sub, i)
-end
-
-function nzrange(xS::XSubArray{<:Any,<:Integer,2,<:Any,<:Tuple{I,<:AbstractVector{<:Integer}},false}, i::Integer) where I<:AbstractVector{<:Integer}
-    S = xS.sub
+function nzrange(S::SubArray{<:Any,2,<:SparseMatrixCSC,<:Tuple{I,J},false}, i::Integer) where {I<:AbstractUnitRange,J<:AbstractVector{<:Integer}}
     A = S.parent
     r = nzrange(A, S.indices[2][i])
-    rangestrip(rowvals(A), r, axes(A,1), xS)
-end
-
-function rangestrip(rvA, r::AbstractVector{Int}, m::AbstractUnitRange, S::XSubArray{<:Any,<:Integer,2,<:Any,<:Tuple{<:AbstractUnitRange,<:Any}})
-
+    rvA = rowvals(A)
+    m = axes(A, 1)
     r1 = first(r)
     r2 = last(r)
-    ri = S.sub.indices[1]
+    ri = S.indices[1]
     i1 = first(ri)
     i2 = last(ri)
     if i1 > first(m)
@@ -28,6 +27,15 @@ function rangestrip(rvA, r::AbstractVector{Int}, m::AbstractUnitRange, S::XSubAr
         r2 = searchsortedlast(rvA, i2, r1, r2, Forward)
     end
     r1:r2
+end
+
+function nzrange(xS::XSubArray{<:Any,<:Integer,2,<:SparseMatrixCSC,<:Tuple{I,J},false}, i::Integer) where {I<:AbstractVector{<:Integer},J<:AbstractVector{<:Integer}}
+    S = xS.sub
+    A = S.parent
+    r = nzrange(A, S.indices[2][i])
+    rvA = rowvals(A)
+    m = axes(A, 1)
+    rangestrip(rvA, r, m, xS)
 end
 
 function rangestrip(rvA, r::AbstractVector{Int}, m::AbstractUnitRange, S::XSubArray{<:Any,<:Integer,2,<:Any,<:Tuple{I,<:Any}}) where I<:StepRange

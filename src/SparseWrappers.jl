@@ -29,6 +29,9 @@ const SparseUnion{Tv,Ti} = Union{SparseMatrixCSC{Tv,Ti},
 const SparseMatrixCSCSymmHerm{Tv,Ti} = Union{Symmetric{Tv,<:SparseUnion{Tv,Ti}},
                                             Hermitian{Tv,<:SparseUnion{Tv,Ti}}}
 
+
+export issparse, indextype, isupper
+
 #export nziterator
 #export Conjugate, HermitianTriangular
 
