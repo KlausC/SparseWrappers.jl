@@ -1,3 +1,5 @@
+export symmetric, hermitian, conjugate, diagonal, upper_triangular, lower_triangular
+export unit_upper_triangular, unit_lower_triangular
 
 struct UniversalWrapper{T,S,F,C,D} <:AbstractMatrix{T}
     parent::S
@@ -16,6 +18,11 @@ mapper(A::UniversalWrapper{T,<:Any,<:Any,C,:R}, i, j) where {T,C} = aij -> i == 
 Base.size(A::UniversalWrapper) = indexflip(A, size(A.parent))
 Base.getindex(A::UniversalWrapper, i, j) = mapper(A, i, j)(getindex(A.parent, indexflip(A, i, j)...))
 
+"""
+    Conjugate(A::AbstractMatrix)
+
+Represent the elementwise conjugate of a given matrix.
+"""
 struct Conjugate{T,S} <:AbstractMatrix{T}
     parent::S
     Conjugate(A::AbstractMatrix{T}) where T = new{T,typeof(A)}(A)
@@ -23,10 +30,16 @@ end
 Base.size(A::Conjugate) = size(A.parent)
 Base.getindex(A::Conjugate,ind...) = conj.(getindex(A.parent, ind...))
 
+"""
+    HermiteTridiagonal(diagonal::Vector,upper::Vector)
+
+Represent a Hermitian tridiagonal matrix.
+"""
 struct HermiteTridiagonal{T,V<:AbstractVector{T}} <: AbstractMatrix{T}
     dv::V
     ev::V
 end
+Base.size(A::HermiteTridiagonal) = (length(dv), length(dv))
 
 """
     combine wrappers of the following kinds to achieve
@@ -43,126 +56,132 @@ up(B::Union{Symmetric,Hermitian,Bidiagonal}) = Symbol(B.uplo)
 toggle(s::Symbol) = s == :U ? :L : :U
 
 import LinearAlgebra: Transpose, Adjoint, Symmetric, Hermitian
+import LinearAlgebra: transpose, adjoint, symmetric, hermitian
 
 # missing types: HermiteTridiagonal, Conjugate to be defined
-Conjugate(B::Conjugate) = B.parent
-Conjugate(B::Transpose) = Adjoint(B.parent)
-Conjugate(B::Adjoint) = Transpose(B.parent)
-# Conjugate(B::Symmetric) =
-# Conjugate(B::Hermitian) =
-# Conjugate(B::Diagonal) = conj(B)
-# Conjugate(B::UpperTriangular) =
-# Conjugate(B::LowerTriangular) =
+conjugate(B::Conjugate) = B.parent
+conjugate(B::Transpose) = adjoint(B.parent)
+conjugate(B::Adjoint) = transpose(B.parent)
+conjugate(B::Diagonal) = Diagonal(conj.(B.diag))
+conjugate(B::AbstractMatrix{<:Real}) = B
+conjugate(B::AbstractMatrix) = Conjugate(B)
 
-Transpose(B::Conjugate) = Adjoint(B.parent)
-Transpose(B::Transpose) = B.parent
-Transpose(B::Adjoint) = Conjugate(B.parent)
-Transpose(B::Symmetric) = B
-Transpose(B::Hermitian) = Conjugate(B)
-Transpose(B::Diagonal) = B
-# Transpose(B::UpperTriangular) =
-# Transpose(B::LowerTriangular) =
+transpose(B::Conjugate) = adjoint(B.parent)
+## transpose(B::Transpose) = B.parent
+transpose(B::Adjoint) = conjugate(B.parent)
+transpose(B::Symmetric) = B
+transpose(B::Hermitian) = conjugate(B)
+transpose(B::Diagonal) = B
+## transpose(B::AbstractMatrix) = Transpose(B)
 
-Adjoint(B::Conjugate) = Transpose(B.parent)
-Adjoint(B::Transpose) = Conjugate(B.parent)
-Adjoint(B::Adjoint) = B.parent
-Adjoint(B::Symmetric) = Conjugate(B)
-Adjoint(B::Hermitian) = B
-Adjoint(B::Diagonal) = Conjugate(B)
-# Adjoint(B::UpperTriangular) =
-# Adjoint(B::LowerTriangular) =
+adjoint(B::Conjugate) = transpose(B.parent)
+adjoint(B::Transpose) = conjugate(B.parent)
+## adjoint(B::Adjoint) = B.parent
+adjoint(B::Symmetric) = conjugate(B)
+adjoint(B::Hermitian) = B
+adjoint(B::Diagonal) = conjugate(B)
+## adjoint(B::AbstractMatrix) = Adjoint(B)
 
-Symmetric(B::Conjugate, uplo::Symbol=:U) = Conjugate(Symmetric(B.parent, uplo))
-Symmetric(B::Transpose, uplo::Symbol=:U) = Symmetric(B.parent, toggle(uplo))
-Symmetric(B::Adjoint, uplo::Symbol=:U) = Conjugate(Symmetric(B.parent, toggle(uplo)))
-Symmetric(B::Symmetric, uplo::Symbol=:U) = B
-function Symmetric(B::Hermitian, uplo::Symbol=:U)
+symmetric(B::Conjugate, uplo::Symbol=:U) = conjugate(symmetric(B.parent, uplo))
+symmetric(B::Transpose, uplo::Symbol=:U) = symmetric(B.parent, toggle(uplo))
+symmetric(B::Adjoint, uplo::Symbol=:U) = conjugate(symmetric(B.parent, toggle(uplo)))
+## symmetric(B::Symmetric, uplo::Symbol=:U) = B
+function symmetric(B::Hermitian, uplo::Symbol=:U)
     base = isreal(diag(B.data)) ? B.data : hermtotria(B)
-    uplo == up(B) ? Symmetric(base, uplo) : Conjugate(Symmetric(base, up(B)))
+    uplo == up(B) ? symmetric(base, uplo) : conjugate(symmetric(base, up(B)))
 end
-Symmetric(B::Diagonal, uplo::Symbol=:U) = B
-Symmetric(B::UpperTriangular, uplo::Symbol=:U) = uplo == :U ? Symmetric(B.data, :U) : Diagonal(diag(B.data))
-Symmetric(B::LowerTriangular, uplo::Symbol=:L) = uplo == :L ? Symmetric(B.data, :L) : Diagonal(diag(B.data))
-Symmetric(B::UnitUpperTriangular, uplo::Symbol=:U) = uplo == :U ? Symmetric(sparsecsc(B), :U) : Diagonal(one.(diag(B.data)))
-Symmetric(B::UnitLowerTriangular, uplo::Symbol=:L) = uplo == :L ? Symmetric(sparsecsc(B), :L) : Diagonal(one.(real(diag(B.data))))
+symmetric(B::Diagonal, uplo::Symbol=:U) = B
+symmetric(B::UpperTriangular, uplo::Symbol=:U) = uplo == :U ? symmetric(B.data, :U) : Diagonal(diag(B.data))
+symmetric(B::LowerTriangular, uplo::Symbol=:L) = uplo == :L ? symmetric(B.data, :L) : Diagonal(diag(B.data))
+symmetric(B::UnitUpperTriangular, uplo::Symbol=:U) = uplo == :U ? symmetric(sparsecsc(B), :U) : Diagonal(oneunit.(diag(B.data)))
+symmetric(B::UnitLowerTriangular, uplo::Symbol=:L) = uplo == :L ? symmetric(sparsecsc(B), :L) : Diagonal(oneunit.(real(diag(B.data))))
+symmetric(B::Hermitian{<:Real}, uplo::Symbol=:U) = Symmetric(B.data, uplo)
+symmetric(B::AbstractMatrix, uplo::Symbol=:U) = Symmetric(B, uplo)
 
-Hermitian(B::Conjugate, uplo::Symbol=:U) = Conjugate(Hermitian(B.parent, uplo))
-Hermitian(B::Transpose, uplo::Symbol=:U) = Conjugate(Hermitian(B.parent, toggle(uplo)))
-Hermitian(B::Adjoint, uplo::Symbol=:U) = Hermitian(B.parent, toggle(uplo))
-Hermitian(B::Symmetric, uplo::Symbol=:U) = uplo == up(B) ? Hermitian(B.data, uplo) : Conjugate(Hermitian(B.data, up(B)))
-Hermitian(B::Hermitian, uplo::Symbol=:U) = B
-Hermitian(B::Diagonal, uplo::Symbol=:U) = real(B)
-Hermitian(B::UpperTriangular, uplo::Symbol=:U) = uplo == :U ? Hermitian(B.data, :U) : Diagonal(real(diag(B.data)))
-Hermitian(B::LowerTriangular, uplo::Symbol=:L) = uplo == :L ? Hermitian(B.data, :L) : Diagonal(real(diag(B.data)))
-Hermitian(B::UnitUpperTriangular, uplo::Symbol=:U) = uplo == :U ? Hermitian(sparsecsc(B), :U) : Diagonal(one.(diag(B.data)))
-Hermitian(B::UnitLowerTriangular, uplo::Symbol=:L) = uplo == :L ? Hermitian(sparsecsc(B), :L) : Diagonal(one.(real(diag(B.data))))
+hermitian(B::Conjugate, uplo::Symbol=:U) = conjugate(hermitian(B.parent, uplo))
+hermitian(B::Transpose, uplo::Symbol=:U) = conjugate(hermitian(B.parent, toggle(uplo)))
+hermitian(B::Adjoint, uplo::Symbol=:U) = hermitian(B.parent, toggle(uplo))
+hermitian(B::Symmetric, uplo::Symbol=:U) = uplo == up(B) ? hermitian(B.data, uplo) : conjugate(hermitian(B.data, up(B)))
+hermitian(B::Hermitian, uplo::Symbol=:U) = B
+hermitian(B::Diagonal, uplo::Symbol=:U) = real(B)
+hermitian(B::UpperTriangular, uplo::Symbol=:U) = uplo == :U ? hermitian(B.data, :U) : Diagonal(real(diag(B.data)))
+hermitian(B::LowerTriangular, uplo::Symbol=:L) = uplo == :L ? hermitian(B.data, :L) : Diagonal(real(diag(B.data)))
+hermitian(B::UnitUpperTriangular, uplo::Symbol=:U) = uplo == :U ? hermitian(sparsecsc(B), :U) : Diagonal(oneunit.(diag(B.data)))
+hermitian(B::UnitLowerTriangular, uplo::Symbol=:L) = uplo == :L ? hermitian(sparsecsc(B), :L) : Diagonal(oneunit.(real(diag(B.data))))
+hermitian(B::AbstractMatrix{<:Real}, uplo::Symbol=:U) = symmetric(B, uplo)
+hermitian(B::AbstractMatrix, uplo::Symbol=:U) = Hermitian(B, uplo)
 
-UpperTriangular(B::Conjugate) = Conjugate(UpperTriangular(B.parent))
-UpperTriangular(B::Transpose) = Transpose(LowerTriangular(B.parent))
-UpperTriangular(B::Adjoint) = Adjoint(LowerTriangular(B.parent))
-UpperTriangular(B::Symmetric) = up(B) == :U ? UpperTriangular(B.data) : Transpose(LowerTriangular(B.data))
-function UpperTriangular(B::Hermitian)
+upper_triangular(B::Conjugate) = conjugate(upper_triangular(B.parent))
+upper_triangular(B::Transpose) = transpose(lower_triangular(B.parent))
+upper_triangular(B::Adjoint) = adjoint(lower_triangular(B.parent))
+upper_triangular(B::Symmetric) = up(B) == :U ? upper_triangular(B.data) : transpose(lower_triangular(B.data))
+function upper_triangular(B::Hermitian)
     base = isreal(diag(B.data)) ? B.data : hermtotria(B)
-    up(B) == :U ? UpperTriangular(base) : Adjoint(LowerTriangular(base))
+    up(B) == :U ? upper_triangular(base) : adjoint(lower_triangular(base))
 end
-UpperTriangular(B::Diagonal) = B
-## UpperTriangular(B::UpperTriangular) = B
-UpperTriangular(B::LowerTriangular) = Diagonal(diag(B))
-UpperTriangular(B::UnitUpperTriangular) = B
-UpperTriangular(B::UnitLowerTriangular) = Diagonal(one.(diag(B.data)))
+upper_triangular(B::Diagonal) = B
+upper_triangular(B::UpperTriangular) = B
+upper_triangular(B::LowerTriangular) = Diagonal(diag(B))
+upper_triangular(B::UnitUpperTriangular) = B
+upper_triangular(B::UnitLowerTriangular) = Diagonal(oneunit.(diag(B.data)))
+upper_triangular(B::AbstractMatrix) = UpperTriangular(B)
 
-LowerTriangular(B::Conjugate) = Conjugate(LowerTriangular(B.parent))
-LowerTriangular(B::Transpose) = Transpose(UpperTriangular(B.parent))
-LowerTriangular(B::Adjoint) = Adjoint(UpperTriangular(B.parent))
-LowerTriangular(B::Symmetric) = up(B) == :L ? LowerTriangular(B.data) : Transpose(UpperTriangular(B.data))
-function LowerTriangular(B::Hermitian)
+lower_triangular(B::Conjugate) = conjugate(lower_triangular(B.parent))
+lower_triangular(B::Transpose) = transpose(upper_triangular(B.parent))
+lower_triangular(B::Adjoint) = Adjoint(upper_triangular(B.parent))
+lower_triangular(B::Symmetric) = up(B) == :L ? lower_triangular(B.data) : transpose(upper_triangular(B.data))
+function lower_triangular(B::Hermitian)
     base = isreal(diag(B.data)) ? B.data : hermtotria(B)
-    up(B) == :L ? LowerTriangular(base) : Adjoint(UpperTriangular(base))
+    up(B) == :L ? lower_triangular(base) : adjoint(upper_triangular(base))
 end
-LowerTriangular(B::Diagonal) = B
-## LowerTriangular(B::LowerTriangular) = B
-LowerTriangular(B::UpperTriangular) = Diagonal(diag(B.data))
-LowerTriangular(B::UnitLowerTriangular) = B
-LowerTriangular(B::UnitUpperTriangular) = Diagonal(one.(diag(B.data)))
+lower_triangular(B::Diagonal) = B
+lower_Triangular(B::LowerTriangular) = B
+lower_triangular(B::UpperTriangular) = Diagonal(diag(B.data))
+lower_triangular(B::UnitLowerTriangular) = B
+lower_triangular(B::UnitUpperTriangular) = Diagonal(oneunit.(diag(B.data)))
+lower_triangular(B::AbstractMatrix) = LowerTriangular(B)
 
-UnitUpperTriangular(B::Conjugate) = Conjugate(UnitUpperTriangular(B.parent))
-UnitUpperTriangular(B::Transpose) = Transpose(UnitLowerTriangular(B.parent))
-UnitUpperTriangular(B::Adjoint) = Adjoint(UnitLowerTriangular(B.parent))
-UnitUpperTriangular(B::Symmetric) = up(B) == :U ? UnitUpperTriangular(B.data) : Transpose(UnitLowerTriangular(B.data))
-function UnitUpperTriangular(B::Hermitian)
+unit_upper_triangular(B::Conjugate) = Conjugate(unit_upper_triangular(B.parent))
+unit_upper_triangular(B::Transpose) = Transpose(UnitLowerTriangular(B.parent))
+unit_upper_triangular(B::Adjoint) = Adjoint(UnitLowerTriangular(B.parent))
+unit_upper_triangular(B::Symmetric) = up(B) == :U ? unit_upper_triangular(B.data) : transpose(unit_lower_triangular(B.data))
+function unit_upper_triangular(B::Hermitian)
     base = isreal(diag(B.data)) ? B.data : hermtotria(B)
-    up(B) == :U ? UnitUpperTriangular(base) : Adjoint(UnitLowerTriangular(base))
+    up(B) == :U ? unit_upper_triangular(base) : adjoint(unit_lower_triangular(base))
 end
-UnitUpperTriangular(B::Diagonal) = B
-## UnitUpperTriangular(B::UnitUpperTriangular) = B
-UnitUpperTriangular(B::UnitLowerTriangular) = Diagonal(one.(diag(B.data)))
-UnitUpperTriangular(B::UpperTriangular) = UnitUpperTriangular(B.data)
-UnitUpperTriangular(B::LowerTriangular) = Diagonal(one.(diag(B.data)))
+unit_upper_triangular(B::Diagonal) = Diagonal(oneunit.(diag(B)))
+unit_upper_triangular(B::UnitUpperTriangular) = B
+unit_upper_triangular(B::UnitLowerTriangular) = Diagonal(oneunit.(diag(B.data)))
+unit_upper_triangular(B::UpperTriangular) = unit_upper_triangular(B.data)
+unit_upper_triangular(B::LowerTriangular) = Diagonal(oneunit.(diag(B.data)))
+unit_upper_triangular(B::AbstractMatrix) = UnitUpperTriangular(B)
 
-UnitLowerTriangular(B::Conjugate) = Conjugate(UnitLowerTriangular(B.parent))
-UnitLowerTriangular(B::Transpose) = Transpose(UnitUpperTriangular(B.parent))
-UnitLowerTriangular(B::Adjoint) = Adjoint(UnitUpperTriangular(B.parent))
-UnitLowerTriangular(B::Symmetric) = up(B) == :L ? UnitLowerTriangular(B.data) : Transpose(UnitUpperTriangular(B.data))
-function UnitLowerTriangular(B::Hermitian)
+unit_lower_triangular(B::Conjugate) = Conjugate(unit_lower_triangular(B.parent))
+unit_lower_triangular(B::Transpose) = Transpose(unit_upper_triangular(B.parent))
+unit_lower_triangular(B::Adjoint) = Adjoint(unit_upper_triangular(B.parent))
+unit_lower_triangular(B::Symmetric) = up(B) == :L ? unit_lower_triangular(B.data) : Transpose(unit_upper_triangular(B.data))
+function unit_lower_triangular(B::Hermitian)
     base = isreal(diag(B.data)) ? B.data : hermtotria(B)
-    up(B) == :L ? UnitLowerTriangular(base) : Adjoint(UnitUpperTriangular(base))
+    up(B) == :L ? unit_lower_triangular(base) : adjoint(unit_upper_triangular(base))
 end
-UnitLowerTriangular(B::Diagonal) = B
-## UnitLowerTriangular(B::UnitLowerTriangular) = B
-UnitLowerTriangular(B::UnitUpperTriangular) = Diagonal(one.(diag(B.data)))
-UnitLowerTriangular(B::LowerTriangular) = UnitLowerTriangular(B.data)
-UnitLowerTriangular(B::UpperTriangular) = Diagonal(one.(diag(B.data)))
+unit_lower_triangular(B::Diagonal) = Diagonal(oneunit.(diag(B)))
+unit_lower_triangular(B::UnitLowerTriangular) = B
+unit_lower_triangular(B::UnitUpperTriangular) = Diagonal(oneunit.(diag(B.data)))
+unit_lower_triangular(B::LowerTriangular) = unit_lower_triangular(B.data)
+unit_lower_triangular(B::UpperTriangular) = Diagonal(oneunit.(diag(B.data)))
+unit_lower_triangular(B::AbstractMatrix) = UnitLowerTriangular(B)
 
-Diagonal(B::Conjugate) = Conjugate(Diagonal(diag(B.parent)))
-Diagonal(B::Transpose) = Diagonal(diag(B.parent))
-Diagonal(B::Adjoint) = Conjugate(Diagonal(diag(B.parent)))
-Diagonal(B::Symmetric) = Diagonal(diag(B.data))
-Diagonal(B::Hermitian) = Diagonal(real(diag(B.data)))
-## Diagonal(B::Diagonal) = B
-Diagonal(B::UpperTriangular) = Diagonal(diag(B.data))
-Diagonal(B::LowerTriangular) = Diagonal(diag(B.data))
-Diagonal(B::UnitUpperTriangular) = Diagonal(one.(diag(B.data)))
-Diagonal(B::UnitLowerTriangular) = Diagonal(one.(diag(B.data)))
+diagonal(B::Conjugate) = conjugate(Diagonal(diag(B.parent)))
+diagonal(B::Transpose) = Diagonal(diag(B.parent))
+diagonal(B::Adjoint) = conjugate(Diagonal(diag(B.parent)))
+diagonal(B::Symmetric) = Diagonal(diag(B.data))
+diagonal(B::Hermitian) = Diagonal(real(diag(B.data)))
+diagonal(B::Diagonal) = B
+diagonal(B::UpperTriangular) = Diagonal(diag(B.data))
+diagonal(B::LowerTriangular) = Diagonal(diag(B.data))
+diagonal(B::UnitUpperTriangular) = Diagonal(oneunit.(diag(B.data)))
+diagonal(B::UnitLowerTriangular) = Diagonal(oneunit.(diag(B.data)))
+diagonal(B::AbstractMatrix) = Diagonal(diag(B))
 
 function hermtotria(B::Hermitian)
     A = sparsecsc((up(B) == :U ? UpperTriangular : LowerTriangular)(B.data))
