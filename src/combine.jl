@@ -19,29 +19,6 @@ Base.size(A::UniversalWrapper) = indexflip(A, size(A.parent))
 Base.getindex(A::UniversalWrapper, i, j) = mapper(A, i, j)(getindex(A.parent, indexflip(A, i, j)...))
 
 """
-    Conjugate(A::AbstractMatrix)
-
-Represent the elementwise conjugate of a given matrix.
-"""
-struct Conjugate{T,S} <:AbstractMatrix{T}
-    parent::S
-    Conjugate(A::AbstractMatrix{T}) where T = new{T,typeof(A)}(A)
-end
-Base.size(A::Conjugate) = size(A.parent)
-Base.getindex(A::Conjugate,ind...) = conj.(getindex(A.parent, ind...))
-
-"""
-    HermiteTridiagonal(diagonal::Vector,upper::Vector)
-
-Represent a Hermitian tridiagonal matrix.
-"""
-struct HermiteTridiagonal{T,V<:AbstractVector{T}} <: AbstractMatrix{T}
-    dv::V
-    ev::V
-end
-Base.size(A::HermiteTridiagonal) = (length(dv), length(dv))
-
-"""
     combine wrappers of the following kinds to achieve
 
   1. try to reduce number of involved wrappers
@@ -52,8 +29,6 @@ WRAPPER_TYPES = [
                  UpperTriangular, LowerTriangular, UnitUpperTriangular, UnitLowerTriangular,
                  Diagonal, Bidiagonal, Tridiagonal, SymTridiagonal, HermiteTridiagonal]
 
-up(B::Union{Symmetric,Hermitian,Bidiagonal}) = Symbol(B.uplo)
-toggle(s::Symbol) = s == :U ? :L : :U
 
 import LinearAlgebra: Transpose, Adjoint, Symmetric, Hermitian
 import LinearAlgebra: transpose, adjoint, symmetric, hermitian

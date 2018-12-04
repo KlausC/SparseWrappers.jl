@@ -65,7 +65,7 @@ end
 # sparse fallback.
 #
 #
-# Sample function with abstarctarray fallback
+# Sample function with abstractarray fallback
 function linop_orig(A::AbstractMatrix)
     n, m = size(A)
     sum = zero(eltype(A))
@@ -93,8 +93,8 @@ linop_sparse(A::AbstractMatrix) = linop(sparsecsc(A))
 
 # The original function is modified
 function linop(A::AbstractMatrix)
-    # issparse(A) && return linop(sparse(A)) # That could easily lead to infinite loops
-    issparse(A) && return linop_sparse(A)
+    # iswrsparse(A) && return linop(sparse(A)) # That could easily lead to infinite loops
+    iswrsparse(A) && return depth(A) > 0 ? linop(inflate(A)) : linop_sparse(A)
     n, m = size(A)
     sum = zero(eltype(A))
     for j = 1:n

@@ -1,8 +1,8 @@
 import LinearAlgebra: AbstractTriangular, UnitLowerTriangular, UnitUpperTriangular
-import SparseArrays: LowerTriangularPlain, UpperTriangularPlain, issparse
+import SparseArrays: LowerTriangularPlain, UpperTriangularPlain
 
 """
-    issparse(S)
+    iswrsparse(S)
 
 Returns `true` if `S` is sparse, and `false` otherwise.
 
@@ -13,21 +13,21 @@ julia> sv = sparsevec([1, 4], [2.3, 2.2], 10)
   [1 ]  =  2.3
   [4 ]  =  2.2
 
-julia> issparse(sv)
+julia> iswrsparse(sv)
 true
 
-julia> issparse(Array(sv))
+julia> iswrsparse(Array(sv))
 false
 
 ```
 """
-issparse(::T) where T<:AbstractArray = issparse(T)
-issparse(T::Type) = walk_wrapper(_issparse, T)
-_issparse(::Type) = false
-_issparse(::Type{<:AbstractSparseArray}) = true
+iswrsparse(::T) where T<:AbstractArray = iswrsparse(T)
+iswrsparse(T::Type) = walk_wrapper(_iswrsparse, T)
+_iswrsparse(::Type) = false
+_iswrsparse(::Type{<:AbstractSparseArray}) = true
 
 iswrappedsparse(::Type{<:AbstractSparseArray}) = false
-iswrappedsparse(T::Type) = issparse(T)
+iswrappedsparse(T::Type) = iswrsparse(T)
 
 indextype(::T) where T<:AbstractArray = indextype(T)
 indextype(T::Type) = walk_wrapper(_indextype, T)
@@ -51,21 +51,47 @@ _islower(::Union{LowerTriangular,UnitLowerTriangular}) = true
 _islower(A::Union{Symmetric,Hermitian}) = A.uplo == 'L'
 
 walk_wrapper(f::Function, x::Any) = f(x)
-for wr in (Symmetric, Hermitian,
+walk_wrapper_deep(f::Function, x::Any) = f(x, nothing)
+for wr in (Conjugate, Symmetric, Hermitian,
                   LowerTriangular, UnitLowerTriangular,
                   UpperTriangular, UnitUpperTriangular,
                   Transpose, Adjoint,
                   SubArray)
 
     pl = wr === SubArray ? :($wr{<:Any,<:Any,T}) : :($wr{<:Any,T})
-    dat = wr in (SubArray, Transpose, Adjoint) ? :parent : :data
     @eval function walk_wrapper(f::Function, ::Type{<:$pl}) where T
         walk_wrapper(f, T)
     end
     @eval function walk_wrapper(f::Function, A::$pl) where T
         res = f(A)
-        ismissing(res) && ( res = walk_wrapper(f, A.$dat) )
+        ismissing(res) && ( res = walk_wrapper(f, parent(A)) )
         ifelse(ismissing(res), false, res)
+    end
+end
+
+"""
+    inflate(A::AbstractMatrix)
+
+Reduce depth in the case of nested wrappers of an abstract array.
+If `dept(A) <= 1` convert to SparseMatrixCSC or Array.
+Otherwise convert the deepest parents of the nesting and leave the rest as is.
+"""
+inflate(A::AbstractArray) = inflate1(A)
+inflate1(A::AbstractArray) = iswrsparse(A) ? sparsecsc(A) : A isa Array ? A : Array(A)
+for ty in (Symmetric, Hermitian)
+    @eval function inflate(A::$ty)
+        depth(A) == 1 ? inflate1(A) : $ty(inflate(parent(A)), up(A))
+    end
+end
+function inflate(A::SubArray)
+    depth(A) == 1 ? inflate1(A) : SubArray(inflate(parent(A)), A.indices)
+end
+for ty in ( LowerTriangular, UnitLowerTriangular,
+            UpperTriangular, UnitUpperTriangular,
+            Conjugate, Transpose, Adjoint)
+
+    @eval function inflate(A::$ty)
+        depth(A) == 1 ? inflate1(A) : $ty(inflate(parent(A)))
     end
 end
 
@@ -84,8 +110,8 @@ sparsecsc(A::UnitUpperTriangular) = sparsecsc(UnitUpperTriangular(sparsecsc(A.da
 sparsecsc(A::LowerTriangular{T,<:AbstractSparseMatrix}) where T = tril(A.data)
 sparsecsc(A::LowerTriangular) = sparsecsc(LowerTriangular(sparsecsc(A.data)))
 sparsecsc(A::UnitLowerTriangular) = sparsecsc(UnitLowerTriangular(sparsecsc(A.data)))
-sparsecsc(A::Symmetric) = sparsecsc(Symmetric(sparsecsc(A.data), Symbol(A.uplo)))
-sparsecsc(A::Hermitian) = sparsecsc(Hermitian(sparsecsc(A.data), Symbol(A.uplo)))
+sparsecsc(A::Symmetric) = sparsecsc(Symmetric(sparsecsc(A.data), up(A)))
+sparsecsc(A::Hermitian) = sparsecsc(Hermitian(sparsecsc(A.data), up(A)))
 
 sparsecsc(A::Transpose{<:Any,<:AbstractSparseMatrix}) = copy(A)
 sparsecsc(A::Transpose) = sparsecsc(Transpose(sparsecsc(A.parent)))
@@ -106,6 +132,10 @@ function sparsecsc(A::Hermitian{Tv,<:SparseMatrixCSC{Tv}}) where Tv
     _sparse(A.uplo == 'U' ? nzrangeup : nzrangelo, adjoint, A)
 end
 sparsecsc(S::SubArray{<:Any,2,<:SparseMatrixCSC}) = getindex(S.parent,S.indices...)
+@inline function sparsecsc(S::Conjugate)
+    A = sparsecsc(parent(S))
+    SparseMatrixCSC(A.m, A.n, A.colptr, A.rowval, conj.(A.nzval))
+end
 
 # 2 cases: Unit(Upper|Lower)Triangular{Tv,SparseMatrixCSC}
 function _sparse(fnzrange::Function, A::AbstractTriangular{Tv}, isunit::Bool) where {Tv}
@@ -256,7 +286,7 @@ end
 # not used
 # serves as a blueprint for accessing all nonzeros of an AbstractSparseMatrix
 function sparsecopy(A::T) where T<:AbstractMatrix{Tv} where Tv
-    issparse(A) ? sparsecopy_sparse(A) : SparseMatrixCSC{Tv,indextype(A)}(A)
+    iswrsparse(A) ? sparsecopy_sparse(A) : SparseMatrixCSC{Tv,indextype(A)}(A)
 end
 
 function sparsecopy_sparse(A::AbstractMatrix{Tv}) where {Tv}
