@@ -44,17 +44,17 @@ conjugate(B::AbstractMatrix) = Conjugate(B)
 transpose(B::Conjugate) = adjoint(B.parent)
 ## transpose(B::Transpose) = B.parent
 transpose(B::Adjoint) = conjugate(B.parent)
-transpose(B::Symmetric) = B
-transpose(B::Hermitian) = conjugate(B)
-transpose(B::Diagonal) = B
+# transpose(B::Symmetric) = B
+# transpose(B::Hermitian) = conjugate(B)
+# transpose(B::Diagonal) = B
 ## transpose(B::AbstractMatrix) = Transpose(B)
 
 adjoint(B::Conjugate) = transpose(B.parent)
 adjoint(B::Transpose) = conjugate(B.parent)
-## adjoint(B::Adjoint) = B.parent
-adjoint(B::Symmetric) = conjugate(B)
-adjoint(B::Hermitian) = B
-adjoint(B::Diagonal) = conjugate(B)
+# adjoint(B::Adjoint) = B.parent
+# adjoint(B::Symmetric) = conjugate(B)
+## adjoint(B::Hermitian) = B
+# adjoint(B::Diagonal) = conjugate(B)
 ## adjoint(B::AbstractMatrix) = Adjoint(B)
 
 symmetric(B::Conjugate, uplo::Symbol=:U) = conjugate(symmetric(B.parent, uplo))
@@ -71,7 +71,7 @@ symmetric(B::LowerTriangular, uplo::Symbol=:L) = uplo == :L ? symmetric(B.data, 
 symmetric(B::UnitUpperTriangular, uplo::Symbol=:U) = uplo == :U ? symmetric(sparsecsc(B), :U) : Diagonal(oneunit.(diag(B.data)))
 symmetric(B::UnitLowerTriangular, uplo::Symbol=:L) = uplo == :L ? symmetric(sparsecsc(B), :L) : Diagonal(oneunit.(real(diag(B.data))))
 symmetric(B::Hermitian{<:Real}, uplo::Symbol=:U) = Symmetric(B.data, uplo)
-symmetric(B::AbstractMatrix, uplo::Symbol=:U) = Symmetric(B, uplo)
+# symmetric(B::AbstractMatrix, uplo::Symbol=:U) = Symmetric(B, uplo)
 
 hermitian(B::Conjugate, uplo::Symbol=:U) = conjugate(hermitian(B.parent, uplo))
 hermitian(B::Transpose, uplo::Symbol=:U) = conjugate(hermitian(B.parent, toggle(uplo)))
@@ -84,7 +84,7 @@ hermitian(B::LowerTriangular, uplo::Symbol=:L) = uplo == :L ? hermitian(B.data, 
 hermitian(B::UnitUpperTriangular, uplo::Symbol=:U) = uplo == :U ? hermitian(sparsecsc(B), :U) : Diagonal(oneunit.(diag(B.data)))
 hermitian(B::UnitLowerTriangular, uplo::Symbol=:L) = uplo == :L ? hermitian(sparsecsc(B), :L) : Diagonal(oneunit.(real(diag(B.data))))
 hermitian(B::AbstractMatrix{<:Real}, uplo::Symbol=:U) = symmetric(B, uplo)
-hermitian(B::AbstractMatrix, uplo::Symbol=:U) = Hermitian(B, uplo)
+# hermitian(B::AbstractMatrix, uplo::Symbol=:U) = Hermitian(B, uplo)
 
 upper_triangular(B::Conjugate) = conjugate(upper_triangular(B.parent))
 upper_triangular(B::Transpose) = transpose(lower_triangular(B.parent))

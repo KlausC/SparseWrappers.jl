@@ -132,7 +132,7 @@ function sparsecsc(A::Hermitian{Tv,<:SparseMatrixCSC{Tv}}) where Tv
     _sparse(A.uplo == 'U' ? nzrangeup : nzrangelo, adjoint, A)
 end
 sparsecsc(S::SubArray{<:Any,2,<:SparseMatrixCSC}) = getindex(S.parent,S.indices...)
-@inline function sparsecsc(S::Conjugate)
+function sparsecsc(S::Conjugate)
     A = sparsecsc(parent(S))
     SparseMatrixCSC(A.m, A.n, A.colptr, A.rowval, conj.(A.nzval))
 end

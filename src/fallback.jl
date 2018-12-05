@@ -78,23 +78,42 @@ function linop_orig(A::AbstractMatrix)
 end
 
 # An implementation for sparse matrices exists
-function linop(A::SparseMatrixCSC)
+function linop(A::SparseMatrixCSC{T}) where T
     m, n = size(A)
-    sum = zero(eltype(A))
+    sum = zero(T)
     nz = nonzeros(A)
     for k = 1:nnz(A)
         sum += nz[k]
     end
-    sum
+    # error("provoke error")
+    return sum
 end
 
-# convert argument to SparseMatrixCSC to call sparse implementation
-linop_sparse(A::AbstractMatrix) = linop(sparsecsc(A))
+# An implementation for sparse matrices exists
+function linop(A::Symmetric{T,<:SparseMatrixCSC}) where T
+    A = A.data
+    m, n = size(A)
+    sum = zero(T)
+    nz = nonzeros(A)
+    for k = 1:nnz(A)
+        sum += nz[k]
+    end
+    # error("symmetric error")
+    return sum
+end
 
 # The original function is modified
-function linop(A::AbstractMatrix)
-    # iswrsparse(A) && return linop(sparse(A)) # That could easily lead to infinite loops
-    iswrsparse(A) && return depth(A) > 0 ? linop(inflate(A)) : linop_sparse(A)
+function linop(@nospecialize A::AbstractMatrix{T}) where T
+    # inflate reduces depth by 1 - try to catch other specific methods
+    if iswrsparse(A) && depth(A) > 0
+        linop(inflate(A))
+    else
+        linop_aaf(A)
+    end
+end
+
+# The original method is renamed to break potential calling loop
+function linop_aaf(A::AbstractMatrix)
     n, m = size(A)
     sum = zero(eltype(A))
     for j = 1:n
@@ -142,10 +161,4 @@ function relatedmethods(m::Method)
     rel = which(f, args)
     rel == m ? nothing : (m, rel)
 end
-
-
-
-
-
-
 
