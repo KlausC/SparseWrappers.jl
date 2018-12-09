@@ -45,6 +45,18 @@ const SparseUnion{Tv,Ti} = Union{SparseMatrixCSC{Tv,Ti},
                                  SubArray{Tv,2,SparseMatrixCSC{Tv,Ti},<:Tuple,false},
                                  XSubArray{Tv,Ti,2,SparseMatrixCSC{Tv,Ti},<:Tuple,false}}
 
+
+struct ArrayViewWrapper{T,S<:AbstractMatrix,W} <: AbstractMatrix{T}
+    data::W
+end
+ArrayViewWrapper(X::ArrayViewWrapper) = X
+function ArrayViewWrapper(X::S) where {T,S<:AbstractArray{T}}
+    ArrayViewWrapper{T,array_storage(S),S}(X)
+end
+Base.parent(X::ArrayViewWrapper) = X.data
+Base.size(X::ArrayViewWrapper) = size(X.data)
+Base.getindex(X::ArrayViewWrapper, I...) = getindex(X.data, I...)
+
 """
     SparseMatrixCSCSymmHerm
 
@@ -55,6 +67,8 @@ const SparseMatrixCSCSymmHerm{Tv,Ti} = Union{Symmetric{Tv,<:SparseUnion{Tv,Ti}},
 
 
 export iswrsparse, indextype, isupper, inflate, depth, sparsecsc, sparseaccess, sparsecopy
+export array_storage
+export Conjugate, HermiteTridigonal
 
 up(B::Union{Symmetric,Hermitian,Bidiagonal}) = B.uplo == 'U' ? :U : :L
 toggle(s::Symbol) = s == :U ? :L : :U

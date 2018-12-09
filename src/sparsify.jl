@@ -40,6 +40,15 @@ _nnz_estimation(A::SparseMatrixCSC) = nnz(A)
 _nnz_estimation(A::SparseVector) = nnz(A)
 _nnz_estimation(A::Array) = length(A)
 
+depth(::T) where T<:AbstractArray = depth(T)
+depth(T::Type) = walk_wrapper(_depth, T, x->x+1)
+_depth(::Type) = 0
+
+array_storage(::T) where T<:AbstractArray = array_storage(T)
+array_storage(T::Type) = walk_wrapper(_array_storage, T)
+_array_storage(T::Type{<:AbstractArray}) = T
+_array_storage(T::Type) = Nothing
+
 import LinearAlgebra: Symmetric, Hermitian, LowerTriangular, UnitLowerTriangular
 import LinearAlgebra: UpperTriangular, UnitUpperTriangular, Transpose, Adjoint
 
@@ -50,17 +59,16 @@ _isupper(A::Union{Symmetric,Hermitian}) = A.uplo == 'U'
 _islower(::Union{LowerTriangular,UnitLowerTriangular}) = true
 _islower(A::Union{Symmetric,Hermitian}) = A.uplo == 'L'
 
-walk_wrapper(f::Function, x::Any) = f(x)
-walk_wrapper_deep(f::Function, x::Any) = f(x, nothing)
-for wr in (Conjugate, Symmetric, Hermitian,
-                  LowerTriangular, UnitLowerTriangular,
-                  UpperTriangular, UnitUpperTriangular,
-                  Transpose, Adjoint,
-                  SubArray)
+walk_wrapper(f::Function, x::Any, g::Function=identity) = f(x)
+for wr in (Symmetric, Hermitian,
+           LowerTriangular, UnitLowerTriangular, UpperTriangular, UnitUpperTriangular,
+           Transpose, Adjoint,
+           SubArray, Conjugate,
+           Diagonal, Bidiagonal, Tridiagonal, SymTridiagonal, HermiteTridiagonal )
 
     pl = wr === SubArray ? :($wr{<:Any,<:Any,T}) : :($wr{<:Any,T})
-    @eval function walk_wrapper(f::Function, ::Type{<:$pl}) where T
-        walk_wrapper(f, T)
+    @eval function walk_wrapper(f::Function, ::Type{<:$pl}, g::Function=identity) where T
+        g(walk_wrapper(f, T, g))
     end
     @eval function walk_wrapper(f::Function, A::$pl) where T
         res = f(A)
@@ -76,23 +84,26 @@ Reduce depth in the case of nested wrappers of an abstract array.
 If `dept(A) <= 1` convert to SparseMatrixCSC or Array.
 Otherwise convert the deepest parents of the nesting and leave the rest as is.
 """
-inflate(A::AbstractArray) = inflate1(A)
-inflate1(A::AbstractArray) = iswrsparse(A) ? sparsecsc(A) : A isa Array ? A : Array(A)
+inflate(A::AbstractArray) = _inflate(A)
+_inflate(A::AbstractArray) = iswrsparse(A) ? sparsecsc(A) : A isa Array ? A : Array(A)
 for ty in (Symmetric, Hermitian)
     @eval function inflate(A::$ty)
-        depth(A) == 1 ? inflate1(A) : $ty(inflate(parent(A)), up(A))
+        depth(A) == 1 ? _inflate(A) : $ty(inflate(parent(A)), up(A))
     end
 end
 function inflate(A::SubArray)
-    depth(A) == 1 ? inflate1(A) : SubArray(inflate(parent(A)), A.indices)
+    depth(A) == 1 ? _inflate(A) : SubArray(inflate(parent(A)), A.indices)
 end
 for ty in ( LowerTriangular, UnitLowerTriangular,
             UpperTriangular, UnitUpperTriangular,
             Conjugate, Transpose, Adjoint)
 
     @eval function inflate(A::$ty)
-        depth(A) == 1 ? inflate1(A) : $ty(inflate(parent(A)))
+        depth(A) == 1 ? _inflate(A) : $ty(inflate(parent(A)))
     end
+end
+for ty in (Diagonal, Bidiagonal, Tridiagonal)
+    @eval inflate(A::$ty) = dropzeros!(sparse(A))
 end
 
 """
@@ -101,40 +112,45 @@ end
 Return `A` if it is a `SparseMatrixCSC` or `SparseVector`, otherwise convert to that type
 in an efficient manner.
 """
-sparsecsc(A::AbstractArray) = sparse(A)
-sparsecsc(A::SparseMatrixCSC) = A
+function sparsecsc(@nospecialize A::AbstractArray)
+    if iswrsparse(A) && depth(A) >= 1
+        sparsecsc(inflate(A))
+    else
+        sparse_aaf(A)
+    end
+end
+
+sparse_aaf(A::AbstractArray) = sparse(A)
+sparse_aaf(A::SparseMatrixCSC) = A
 sparsecsc(A::SparseVector) = A
 sparsecsc(A::UpperTriangular{T,<:AbstractSparseMatrix}) where T = triu(A.data)
-sparsecsc(A::UpperTriangular) = sparsecsc(UpperTriangular(sparsecsc(A.data)))
-sparsecsc(A::UnitUpperTriangular) = sparsecsc(UnitUpperTriangular(sparsecsc(A.data)))
 sparsecsc(A::LowerTriangular{T,<:AbstractSparseMatrix}) where T = tril(A.data)
-sparsecsc(A::LowerTriangular) = sparsecsc(LowerTriangular(sparsecsc(A.data)))
-sparsecsc(A::UnitLowerTriangular) = sparsecsc(UnitLowerTriangular(sparsecsc(A.data)))
-sparsecsc(A::Symmetric) = sparsecsc(Symmetric(sparsecsc(A.data), up(A)))
-sparsecsc(A::Hermitian) = sparsecsc(Hermitian(sparsecsc(A.data), up(A)))
-
 sparsecsc(A::Transpose{<:Any,<:AbstractSparseMatrix}) = copy(A)
-sparsecsc(A::Transpose) = sparsecsc(Transpose(sparsecsc(A.parent)))
 sparsecsc(A::Adjoint{<:Any,<:AbstractSparseMatrix}) = copy(A)
-sparsecsc(A::Adjoint) = sparsecsc(Adjoint(sparsecsc(A.parent)))
 
-sparsecsc(A::Transpose{Tv,<:UpperTriangularPlain}) where Tv = _sparse(nzrangeup, transpose, A)
-sparsecsc(A::Transpose{Tv,<:LowerTriangularPlain}) where Tv = _sparse(nzrangelo, transpose, A)
-sparsecsc(A::Adjoint{Tv,<:UpperTriangularPlain}) where Tv = _sparse(nzrangeup, adjoint, A)
-sparsecsc(A::Adjoint{Tv,<:LowerTriangularPlain}) where Tv = _sparse(nzrangelo, adjoint, A)
+sparsecsc(A::Transpose{<:Any,<:UpperTriangularPlain}) = _sparse(nzrangeup, transpose, A)
+sparsecsc(A::Transpose{<:Any,<:LowerTriangularPlain}) = _sparse(nzrangelo, transpose, A)
+sparsecsc(A::Adjoint{<:Any,<:UpperTriangularPlain}) = _sparse(nzrangeup, adjoint, A)
+sparsecsc(A::Adjoint{<:Any,<:LowerTriangularPlain}) = _sparse(nzrangelo, adjoint, A)
 
-sparsecsc(A::UnitUpperTriangular{Tv,<:SparseMatrixCSC{Tv}}) where Tv = _sparse(nzrangeup, A, true)
-sparsecsc(A::UnitLowerTriangular{Tv,<:SparseMatrixCSC{Tv}}) where Tv = _sparse(nzrangelo, A, true)
-function sparsecsc(A::Symmetric{Tv,<:SparseMatrixCSC{Tv}}) where Tv
+function sparsecsc(A::UnitUpperTriangular{<:Any,<:SparseMatrixCSC})
+    _sparse(nzrangeup, A, true)
+end
+function sparsecsc(A::UnitLowerTriangular{<:Any,<:SparseMatrixCSC})
+    _sparse(nzrangelo, A, true)
+end
+function sparsecsc(A::Symmetric{<:Any,<:SparseMatrixCSC})
     _sparse(A.uplo == 'U' ? nzrangeup : nzrangelo, transpose, A)
 end
-function sparsecsc(A::Hermitian{Tv,<:SparseMatrixCSC{Tv}}) where Tv
+function sparsecsc(A::Hermitian{<:Any,<:SparseMatrixCSC})
     _sparse(A.uplo == 'U' ? nzrangeup : nzrangelo, adjoint, A)
 end
-sparsecsc(S::SubArray{<:Any,2,<:SparseMatrixCSC}) = getindex(S.parent,S.indices...)
-function sparsecsc(S::Conjugate)
-    A = sparsecsc(parent(S))
-    SparseMatrixCSC(A.m, A.n, A.colptr, A.rowval, conj.(A.nzval))
+function sparsecsc(S::SubArray{<:Any,2,<:SparseMatrixCSC})
+    getindex(S.parent,S.indices...)
+end
+function sparsecsc(S::Conjugate{<:Any,<:SparseMatrixCSC{Tv,Ti}}) where {Tv,Ti}
+    A = parent(S)
+    SparseMatrixCSC{Tv,Ti}(A.m, A.n, A.colptr, A.rowval, conj.(A.nzval))
 end
 
 # 2 cases: Unit(Upper|Lower)Triangular{Tv,SparseMatrixCSC}

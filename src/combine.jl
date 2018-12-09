@@ -71,7 +71,7 @@ symmetric(B::LowerTriangular, uplo::Symbol=:L) = uplo == :L ? symmetric(B.data, 
 symmetric(B::UnitUpperTriangular, uplo::Symbol=:U) = uplo == :U ? symmetric(sparsecsc(B), :U) : Diagonal(oneunit.(diag(B.data)))
 symmetric(B::UnitLowerTriangular, uplo::Symbol=:L) = uplo == :L ? symmetric(sparsecsc(B), :L) : Diagonal(oneunit.(real(diag(B.data))))
 symmetric(B::Hermitian{<:Real}, uplo::Symbol=:U) = Symmetric(B.data, uplo)
-# symmetric(B::AbstractMatrix, uplo::Symbol=:U) = Symmetric(B, uplo)
+symmetric(B::AbstractMatrix) = Symmetric(B, :U)
 
 hermitian(B::Conjugate, uplo::Symbol=:U) = conjugate(hermitian(B.parent, uplo))
 hermitian(B::Transpose, uplo::Symbol=:U) = conjugate(hermitian(B.parent, toggle(uplo)))
@@ -84,7 +84,7 @@ hermitian(B::LowerTriangular, uplo::Symbol=:L) = uplo == :L ? hermitian(B.data, 
 hermitian(B::UnitUpperTriangular, uplo::Symbol=:U) = uplo == :U ? hermitian(sparsecsc(B), :U) : Diagonal(oneunit.(diag(B.data)))
 hermitian(B::UnitLowerTriangular, uplo::Symbol=:L) = uplo == :L ? hermitian(sparsecsc(B), :L) : Diagonal(oneunit.(real(diag(B.data))))
 hermitian(B::AbstractMatrix{<:Real}, uplo::Symbol=:U) = symmetric(B, uplo)
-# hermitian(B::AbstractMatrix, uplo::Symbol=:U) = Hermitian(B, uplo)
+hermitian(B::AbstractMatrix) = Hermitian(B, :U)
 
 upper_triangular(B::Conjugate) = conjugate(upper_triangular(B.parent))
 upper_triangular(B::Transpose) = transpose(lower_triangular(B.parent))
@@ -180,12 +180,6 @@ _wrt(A::Union{UnitUpperTriangular,UnitLowerTriangular}) = Any[ _wr(A); _wrt(A.da
 _wrt(A::Union{Diagonal,Tridiagonal,SymTridiagonal}) = Any[ _wr(A) ]
 _wrt(A::Bidiagonal) = Any[ (_wr(A), up(A)) ]
 _wrt(A::Any) = []
-
-depth(A::Union{Conjugate,Transpose,Adjoint}) = depth(A.parent) + 1
-depth(A::Union{Symmetric,Hermitian}) = depth(A.data) + 1
-depth(A::Union{UpperTriangular,LowerTriangular}) = depth(A.data) + 1
-depth(A::Diagonal) = 1
-depth(::Any) = 0
 
 apply(T) = A -> T(A)
 apply(t::Tuple) = A -> t[1](A, t[2])
