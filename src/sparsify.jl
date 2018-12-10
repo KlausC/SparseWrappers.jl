@@ -102,9 +102,34 @@ for ty in ( LowerTriangular, UnitLowerTriangular,
         depth(A) == 1 ? _inflate(A) : $ty(inflate(parent(A)))
     end
 end
-for ty in (Diagonal, Bidiagonal, Tridiagonal)
+for ty in (Diagonal, Bidiagonal, Tridiagonal, SymTridiagonal, HermiteTridiagonal)
     @eval inflate(A::$ty) = dropzeros!(sparse(A))
 end
+
+import SparseArrays.SparseMatrixCSC
+for wr in (Symmetric, Hermitian,
+           UpperTriangular, LowerTriangular, UnitUpperTriangular, UnitLowerTriangular,
+           Transpose, Adjoint, SubArray, Conjugate,
+           Bidiagonal, Tridiagonal, SymTridiagonal, HermiteTridiagonal)
+
+    @eval unwrap(A::$wr) = iswrsparse(A) ? convert(SparseMatrixCSC, A) : convert(Array, A)
+    @eval SparseMatrixCSC(A::$wr) = sparsecsc(A)
+    @eval SparseMatrixCSC{Tv}(A::$wr{Tv}) where Tv = sparsecsc(A)
+    @eval SparseMatrixCSC{Tv}(A::$wr) where Tv = SparseMatrixCSC{Tv}(sparsecsc(A))
+    @eval SparseMatrixCSC{Tv,Ti}(A::$wr) where {Tv,Ti} = SparseMatrixCSC{Tv,Ti}(sparsecsc(A))
+end
+
+"""
+    unwrap(A::AbstractMatrix)
+
+In case A is a wrapper type (`SubArray, Symmetric, Adjoint, SubArray, Triangular, Tridiagonal`, etc.)
+convert to `Matrix` or `SparseMatrixCSC`, depending on final storage type of A.
+For other types return A itself.
+"""
+unwrap(A::AbstractArray) = A
+
+import Base.copy
+copy(A::SubArray) = getindex(unwrap(parent(A)), A.indices...)
 
 """
     sparsecsc(A::AbstractArray)
@@ -125,8 +150,14 @@ sparse_aaf(A::SparseMatrixCSC) = A
 sparsecsc(A::SparseVector) = A
 sparsecsc(A::UpperTriangular{T,<:AbstractSparseMatrix}) where T = triu(A.data)
 sparsecsc(A::LowerTriangular{T,<:AbstractSparseMatrix}) where T = tril(A.data)
-sparsecsc(A::Transpose{<:Any,<:AbstractSparseMatrix}) = copy(A)
-sparsecsc(A::Adjoint{<:Any,<:AbstractSparseMatrix}) = copy(A)
+function sparsecsc(A::Transpose{<:Any,<:AbstractSparseVector})
+    B = parent(A);
+    copy(reshape(transpose.(B), 1, size(B,1)))
+end
+function sparsecsc(A::Adjoint{<:Any,<:AbstractSparseVector})
+    B = parent(A);
+    copy(reshape(adjoint.(B), 1, size(B,1)))
+end
 
 sparsecsc(A::Transpose{<:Any,<:UpperTriangularPlain}) = _sparse(nzrangeup, transpose, A)
 sparsecsc(A::Transpose{<:Any,<:LowerTriangularPlain}) = _sparse(nzrangelo, transpose, A)

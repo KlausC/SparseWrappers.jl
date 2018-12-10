@@ -67,6 +67,7 @@ const SparseMatrixCSCSymmHerm{Tv,Ti} = Union{Symmetric{Tv,<:SparseUnion{Tv,Ti}},
 
 
 export iswrsparse, indextype, isupper, inflate, depth, sparsecsc, sparseaccess, sparsecopy
+export unwrap
 export array_storage
 export Conjugate, HermiteTridigonal
 
