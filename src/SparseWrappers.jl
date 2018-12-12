@@ -4,8 +4,45 @@ using LinearAlgebra
 using SparseArrays
 
 import LinearAlgebra:   mul!
-import SparseArrays:    possible_adjoint, SparseMatrixCSCUnion
+import SparseArrays:    SparseMatrixCSCUnion
 import Base.Order: Forward
+import LinearAlgebra: AbstractTriangular, UnitLowerTriangular, UnitUpperTriangular
+
+if VERSION >= v"1.1.0-DEV"
+import SparseArrays: LowerTriangularPlain, UpperTriangularPlain
+else
+const UnitDiagonalTriangular = Union{UnitUpperTriangular,UnitLowerTriangular}
+
+const LowerTriangularPlain{T} = Union{
+            LowerTriangular{T,<:SparseMatrixCSCUnion{T}},
+            UnitLowerTriangular{T,<:SparseMatrixCSCUnion{T}}}
+
+const LowerTriangularWrapped{T} = Union{
+            Adjoint{T,<:UpperTriangular{T,<:SparseMatrixCSCUnion{T}}},
+            Adjoint{T,<:UnitUpperTriangular{T,<:SparseMatrixCSCUnion{T}}},
+            Transpose{T,<:UpperTriangular{T,<:SparseMatrixCSCUnion{T}}},
+            Transpose{T,<:UnitUpperTriangular{T,<:SparseMatrixCSCUnion{T}}}} where T
+
+const UpperTriangularPlain{T} = Union{
+            UpperTriangular{T,<:SparseMatrixCSCUnion{T}},
+            UnitUpperTriangular{T,<:SparseMatrixCSCUnion{T}}}
+
+const UpperTriangularWrapped{T} = Union{
+            Adjoint{T,<:LowerTriangular{T,<:SparseMatrixCSCUnion{T}}},
+            Adjoint{T,<:UnitLowerTriangular{T,<:SparseMatrixCSCUnion{T}}},
+            Transpose{T,<:LowerTriangular{T,<:SparseMatrixCSCUnion{T}}},
+            Transpose{T,<:UnitLowerTriangular{T,<:SparseMatrixCSCUnion{T}}}} where T
+
+const UpperTriangularSparse{T} = Union{
+            UpperTriangularWrapped{T}, UpperTriangularPlain{T}} where T
+
+const LowerTriangularSparse{T} = Union{
+            LowerTriangularWrapped{T}, LowerTriangularPlain{T}} where T
+
+const TriangularSparse{T} = Union{
+            LowerTriangularSparse{T}, UpperTriangularSparse{T}} where T
+
+end
 
 """
     Conjugate(A::AbstractMatrix)

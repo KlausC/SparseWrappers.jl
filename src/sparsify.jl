@@ -1,5 +1,3 @@
-import LinearAlgebra: AbstractTriangular, UnitLowerTriangular, UnitUpperTriangular
-import SparseArrays: LowerTriangularPlain, UpperTriangularPlain
 
 """
     iswrsparse(S)
