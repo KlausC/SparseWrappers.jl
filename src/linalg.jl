@@ -77,8 +77,64 @@ function nzrangelo(A, r::AbstractVector{<:Integer}, i)
     view(r, searchsortedfirst(view(rowvals(A), r), i):length(r))
 end
 
-
 function spmatmul_orig(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
+                  sortindices::Symbol = :sortcols) where {Tv,Ti}
+    mA, nA = size(A)
+    mB, nB = size(B)
+    nA==mB || throw(DimensionMismatch())
+
+    colptrA = A.colptr; rowvalA = A.rowval; nzvalA = A.nzval
+    colptrB = B.colptr; rowvalB = B.rowval; nzvalB = B.nzval
+    # TODO: Need better estimation of result space
+    nnzC = min(mA*nB, length(nzvalA) + length(nzvalB))
+    colptrC = Vector{Ti}(undef, nB+1)
+    rowvalC = Vector{Ti}(undef, nnzC)
+    nzvalC = Vector{Tv}(undef, nnzC)
+
+    @inbounds begin
+        ip = 1
+        xb = zeros(Ti, mA)
+        x  = zeros(Tv, mA)
+        for i in 1:nB 
+            if ip + mA - 1 > nnzC 
+                resize!(rowvalC, nnzC + max(nnzC,mA))
+                resize!(nzvalC, nnzC + max(nnzC,mA))
+                nnzC = length(nzvalC)
+            end
+            colptrC[i] = ip 
+            for jp in colptrB[i]:(colptrB[i+1] - 1) 
+                nzB = nzvalB[jp]
+                j = rowvalB[jp]
+                for kp in colptrA[j]:(colptrA[j+1] - 1) 
+                    nzC = nzvalA[kp] * nzB
+                    k = rowvalA[kp]
+                    if xb[k] != i 
+                        rowvalC[ip] = k
+                        ip += 1 
+                        xb[k] = i
+                        x[k] = nzC
+                    else
+                        x[k] += nzC
+                    end
+                end
+            end
+                        for vp in colptrC[i]:(ip - 1)
+                nzvalC[vp] = x[rowvalC[vp]]
+            end
+        end
+        colptrC[nB+1] = ip
+    end
+
+    deleteat!(rowvalC, colptrC[end]:length(rowvalC))
+    deleteat!(nzvalC, colptrC[end]:length(nzvalC))
+
+    # The Gustavson algorithm does not guarantee the product to have sorted row indices.
+    Cunsorted = SparseMatrixCSC(mA, nB, colptrC, rowvalC, nzvalC)
+    C = SparseArrays.sortSparseMatrixCSC!(Cunsorted, sortindices=sortindices)
+    return C
+end
+
+function spmatmul_mod(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
                   sortindices::Symbol = :sortcols) where {Tv,Ti}
     mA, nA = size(A)
     mB, nB = size(B)
@@ -95,8 +151,8 @@ function spmatmul_orig(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
 
     @inbounds begin
         ip = 1
-        xb = zeros(Ti, mA)
-        x  = zeros(Tv, mA)
+        xb = fill(false, mA)
+        x  = Vector{Tv}(undef, mA)
         for i in 1:nB
             if ip + mA - 1 > nnzC
                 resize!(rowvalC, nnzC + max(nnzC,mA))
@@ -110,10 +166,10 @@ function spmatmul_orig(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
                 for kp in colptrA[j]:(colptrA[j+1] - 1)
                     nzC = nzvalA[kp] * nzB
                     k = rowvalA[kp]
-                    if xb[k] != i
+                    if !xb[k]
                         rowvalC[ip] = k
                         ip += 1
-                        xb[k] = i
+                        xb[k] = true
                         x[k] = nzC
                     else
                         x[k] += nzC
@@ -122,6 +178,7 @@ function spmatmul_orig(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
             end
             for vp in colptrC[i]:(ip - 1)
                 nzvalC[vp] = x[rowvalC[vp]]
+                xb[rowvalC[vp]] = false
             end
         end
         colptrC[nB+1] = ip
@@ -137,8 +194,9 @@ function spmatmul_orig(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
 end
 
 # Gustavsen's matrix multiplication algorithm revisited
-function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
+function spmatmul_alt(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
                   sortindices::Symbol = :sortcols) where {Tv,Ti}
+
     mA, nA = size(A)
     nB = size(B, 2)
     nA == size(B, 1) || throw(DimensionMismatch())
@@ -149,18 +207,12 @@ function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
     colptrC = Vector{Ti}(undef, nB+1)
     rowvalC = Vector{Ti}(undef, nnzC)
     nzvalC = Vector{Tv}(undef, nnzC)
-    nzpercol = nnzC ÷ nB
-    sorting_is_better = (ilog2(nzpercol) - 1) * nzpercol < mA
-
-    # used in sortcol!
-    # index = zeros(Ti, mA)
-    # row = zeros(Ti, mA)
-    # perm = Base.Perm(Base.ord(isless, identity, false, Base.Order.Forward), row)
+    nzpercol = nnzC ÷ max(nB, 1)
 
     @inbounds begin
         ip = 1
-        x  = Vector{Tv}(undef, mA)
-        xb = zeros(Ti, mA)
+        #x  = Vector{Tv}(undef, mA)
+        xb = fill(false, mA)
         for i in 1:nB
             if ip + mA - 1 > nnzC
                 nnzC += max(mA, nnzC>>2)
@@ -175,27 +227,92 @@ function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
                 for kp in nzrange(A, j)
                     nzC = nzvalA[kp] * nzB
                     k = rowvalA[kp]
-                    if xb[k] == i
-                        x[k] += nzC
+                    if xb[k]
+                        nzvalC[k+ip0-1] += nzC
                     else
-                        x[k] = nzC
-                        xb[k] = i
+                        nzvalC[k+ip0-1] = nzC
+                        xb[k] = true
+                        ip += 1
+                    end
+                end
+            end
+            if ip > ip0
+                vp = ip0
+                for k = 1:mA
+                    if xb[k]
+                        rowvalC[vp] = k
+                        nzvalC[vp] = nzvalC[k+ip0-1]
+                        xb[k] = false 
+                        vp += 1
+                    end
+                end
+            end
+        end
+        colptrC[nB+1] = ip
+    end
+
+    resize!(rowvalC, ip - 1)
+    resize!(nzvalC, ip - 1)
+
+    # This modification of Gustavson algorithm has sorted row indices
+    SparseMatrixCSC(mA, nB, colptrC, rowvalC, nzvalC)
+end
+# Gustavsen's matrix multiplication algorithm revisited
+function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
+                  sortindices::Symbol = :sortcols) where {Tv,Ti}
+    mA, nA = size(A)
+    nB = size(B, 2)
+    nA == size(B, 1) || throw(DimensionMismatch())
+
+    rowvalA = rowvals(A); nzvalA = nonzeros(A)
+    rowvalB = rowvals(B); nzvalB = nonzeros(B)
+    nnzC = estimate_mulsize(mA, nnz(A), nA, nnz(B), nB) * 11 ÷ 10
+    colptrC = Vector{Ti}(undef, nB+1)
+    rowvalC = Vector{Ti}(undef, nnzC)
+    nzvalC = Vector{Tv}(undef, nnzC)
+    nzpercol = nnzC ÷ max(nB, 1)
+
+    @inbounds begin
+        ip = 1
+        xb = fill(false, mA)
+        for i in 1:nB
+            if ip + mA - 1 > nnzC
+                nnzC += max(mA, nnzC>>2)
+                resize!(rowvalC, nnzC)
+                resize!(nzvalC, nnzC)
+            end
+            colptrC[i] = ip0 = ip
+            k0 = ip - 1
+            for jp in nzrange(B, i)
+                nzB = nzvalB[jp]
+                j = rowvalB[jp]
+                for kp in nzrange(A, j)
+                    nzC = nzvalA[kp] * nzB
+                    k = rowvalA[kp]
+                    if xb[k]
+                        nzvalC[k+k0] += nzC
+                    else
+                        nzvalC[k+k0] = nzC
+                        xb[k] = true
                         rowvalC[ip] = k
                         ip += 1
                     end
                 end
             end
             if ip > ip0
-                if sorting_is_better
-                    # sortcol!(ip0, ip-1, rowvalC, index, row, perm)
-                    @simd for k = ip0:ip-1
-                        nzvalC[k] = x[rowvalC[k]]
+                if prefer_sort(ip-k0, mA)
+                    sort!(rowvalC, ip0, ip-1, QuickSort, Base.Order.Forward)
+                    for vp = ip0:ip-1
+                        k = rowvalC[vp]
+                        xb[k] = false
+                        nzvalC[vp] = nzvalC[k+k0]
                     end
                 else
                     for k = 1:mA
-                        if xb[k] == i
+                        if xb[k]
+                            xb[k] = false
                             rowvalC[ip0] = k
-                            nzvalC[ip0] = x[k]
+                            nzvalC[ip0] = nzvalC[k+k0]
                             ip0 += 1
                         end
                     end
@@ -205,65 +322,28 @@ function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
         colptrC[nB+1] = ip
     end
 
-    ip -= 1
-    resize!(rowvalC, ip)
-    resize!(nzvalC, ip)
+    resize!(rowvalC, ip - 1)
+    resize!(nzvalC, ip - 1)
 
-    # This modification of Gustavson algorithm has sorted row indices if !sorting_is_better.
-    Cunsorted = SparseMatrixCSC(mA, nB, colptrC, rowvalC, nzvalC)
-    if sorting_is_better
-        SparseArrays.sortSparseMatrixCSC!(Cunsorted, sortindices=sortindices)
-    else
-        Cunsorted
-    end
+    # This modification of Gustavson algorithm has sorted row indices
+    C = SparseMatrixCSC(mA, nB, colptrC, rowvalC, nzvalC)
+    return C
 end
 
 # estimated number of non-zeros in matrix product
+# it is assumed, that the non-zero indices are distributed independently and uniformly
+# in both matrices. Over-estimation is possible if that is not the case.
 function estimate_mulsize(m::Integer, nnzA::Integer, n::Integer, nnzB::Integer, k::Integer)
     p = (nnzA / (m * n)) * (nnzB / (n * k))
-    isnan(p) ? 0 : Int(ceil(-expm1(log1p(-p) * n) * m * k)) # is (1 - (1 - p)^n) * m * k
+    p >= 1 ? m*k : p > 0 ? Int(ceil(-expm1(log1p(-p) * n)*m*k)) : 0 # (1-(1-p)^n)*m*k
 end
 
+# determine if sort! shall be used or the whole column be scanned
+# based on empirical data on i7-3610QM CPU
+# which measured runtimes of the scanning and the sorting loops of the algorithm.
+# The parameters 6 and 3 might be modified.
+prefer_sort(nz::Integer, m::Integer) = m > 6 && 3 * ilog2(nz) * nz < m
+
+# minimal number of bits required to represent integer; ilog2(n) >= log2(n)
 ilog2(n::Integer) = sizeof(n)<<3 - leading_zeros(n)
-
-function sortcol!(lo::Integer, hi::Integer, rowval::Vector, index, row, perm)
-
-    @inbounds begin
-        numrows = hi - lo + 1
-        if numrows <= 1
-            return
-        elseif numrows == 2
-            f, s = lo, hi
-            if rowval[f] > rowval[s]
-                rowval[f], rowval[s] = rowval[s], rowval[f]
-            end
-            return
-        end
-        resize!(row, numrows)
-        resize!(index, numrows)
-
-        jj = 1
-        @simd for j = lo:hi
-            row[jj] = rowval[j]
-            jj += 1
-        end
-
-        if numrows <= 16
-            alg = Base.Sort.InsertionSort
-        else
-            alg = Base.Sort.QuickSort
-        end
-
-        # Reset permutation
-        index .= 1:numrows
-
-        sort!(index, alg, perm)
-
-        jj = 1
-        @simd for j = lo:hi
-            rowval[j] = row[index[jj]]
-            jj += 1
-        end
-    end
-end
 

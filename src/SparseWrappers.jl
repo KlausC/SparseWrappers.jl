@@ -122,5 +122,6 @@ include("combine.jl")
 include("linalg.jl")
 include("fallback.jl")
 include("views.jl")
+include("timings.jl")
 
 end # module
