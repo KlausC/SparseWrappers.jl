@@ -99,8 +99,10 @@ function sort_or_scan(rowval::Vector, nzval::Vector, xb::Vector, len::Integer, m
 end
 
 function runsort(rowvalC, nzvalC, xb, ip0, ip, m)
-    let ip0=ip0, ip=ip, k0 = ip0 - 1
-        sort!(rowvalC, ip0, ip-1, QuickSort, Base.Order.Forward)
+    let ip0=ip0, ip=ip, k0 = ip0 - 1, nnzi = ip - ip0
+        alg = nnzi <= 21 ? InsertionSort : QuickSort
+        sort!(rowvalC, ip0, ip-1, alg, Base.Order.Forward)
+        #sort!(rowvalC, ip0, ip-1, QuickSort, Base.Order.Forward)
         for vp = ip0:ip-1
             k = rowvalC[vp]
             xb[k] = false
@@ -189,5 +191,43 @@ function samplex_plot(r::UnitRange, res::Vector{<:Vector})
 end
 
 nlogn(x) = x <= 0 ? zero(x) : ilog2(x) * x
+
+probqs(pq::AbstractFloat, n::Integer) = -expm1(log1p(-pq) * n)
+probpq(qs::AbstractFloat, n::Integer) = -expm1(log1p(-qs) / n)
+
+function benchmark01(m::Integer, n::Integer, k::Integer, nz::Integer)
+    0 <= nz <= m || throw(ArgumentError("0 <= nnz($nz) <= m($m) required"))
+    
+    qs = prevfloat(nz / m) # targeted fill factor of result kill case nz == m
+    pq = probpq(qs, n) # product of fill factors of A nd B
+    #1 / (k * m) <= pq || throw(ArgumentError("nnz too small"))
+    
+    x = 0.5
+    p = pq * (1-x) + x
+    q = pq + 1 - p
+    spdq = sqrt(p/q)
+    spq = sqrt(pq)
+    p, q = spq * spdq, spq / spdq
+    A = sprandn(m, n, p)
+    B = sprandn(n, k, q)
+    println("nnz(A)=$(nnz(A)) nnz(b)=$(nnz(B))")
+    beorig = @benchmark SparseWrappers.spmatmul_orig($A, $B) samples=10
+    benew = @benchmark SparseWrappers.spmatmul($A, $B) samples=10
+    minimum(beorig).time, minimum(benew).time
+end
+
+
+
+
+
+
+    
+
+
+
+
+    
+
+
 
 

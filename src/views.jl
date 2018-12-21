@@ -1,15 +1,19 @@
 
-import SparseArrays: nzrange, rowvals, nonzeros, SparseMatrixCSCView
-
 sparseaccess(A::SparseMatrixCSC) = A
 sparseaccess(A::SubArray{<:Any,2,<:SparseMatrixCSC{<:Any,<:Any},<:Tuple{I,<:Any},false}) where
     I<:Union{Base.Slice{<:Base.OneTo},AbstractUnitRange} = A
 
 sparseaccess(A::SubArray) = XSubArray(A)
 
-nonzeros(S::SubArray) = nonzeros(S.parent)
-nonzeros(S::XSubArray{<:Any,<:Integer,2}) = nonzeros(S.sub.parent)
+# the actual nonzero entries belonging to the view
+nzvalview(S::SparseMatrixCSCView) = view(S.parent.nzval, first(nzrange(S, first(axes(S, 2)))):last(nzrange(S, last(axes(S, 2)))))
 
+# 
+nonzeros(S::SubArray) = nonzeros(S.parent)
+nonzeros(S::XSubArray{<:Any,<:Integer,2}) = nonzeros(S.sub)
+
+nnz(S::SparseMatrixCSCView) = nzrange(S.parent, last(S.indices[2]))[end] - nzrange(S.parent, first(S.indices[2]))[1] + 1
+nzrange(S::SparseMatrixCSCView, col::Integer) = nzrange(S.parent, S.indices[2][col])
 function nzrange(S::SubArray{<:Any,2,<:SparseMatrixCSC,<:Tuple{I,J},false}, i::Integer) where {I<:AbstractUnitRange,J<:AbstractVector{<:Integer}}
     A = S.parent
     r = nzrange(A, S.indices[2][i])
@@ -81,6 +85,7 @@ function rangestrip(rvA, r::AbstractVector{Int}, m::AbstractUnitRange, S::XSubAr
     (r1:r2)[p][k+1:end]
 end
 
+rowvals(S::SparseMatrixCSCView) = S.parent.rowval
 rowvals(xs::XSubArray) = xs.rowval
 
 struct RowIndexVector{U,T,D} <: AbstractVector{Int}

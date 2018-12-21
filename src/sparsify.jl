@@ -124,7 +124,7 @@ In case A is a wrapper type (`SubArray, Symmetric, Adjoint, SubArray, Triangular
 convert to `Matrix` or `SparseMatrixCSC`, depending on final storage type of A.
 For other types return A itself.
 """
-unwrap(A::AbstractArray) = A
+unwrap(A::Any) = A
 
 import Base.copy
 copy(A::SubArray) = getindex(unwrap(parent(A)), A.indices...)

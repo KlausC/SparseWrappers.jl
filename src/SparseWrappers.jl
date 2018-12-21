@@ -8,6 +8,8 @@ import SparseArrays:    SparseMatrixCSCUnion
 import Base.Order: Forward
 import LinearAlgebra: AbstractTriangular, UnitLowerTriangular, UnitUpperTriangular
 
+import SparseArrays: nzrange, rowvals, nonzeros, nnz, nzvalview, SparseMatrixCSCView
+
 if VERSION >= v"1.1.0-DEV"
 import SparseArrays: LowerTriangularPlain, UpperTriangularPlain
 else
@@ -123,5 +125,6 @@ include("linalg.jl")
 include("fallback.jl")
 include("views.jl")
 include("timings.jl")
+include("mmatrix.jl")
 
 end # module

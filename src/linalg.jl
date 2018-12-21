@@ -258,15 +258,14 @@ function spmatmul_alt(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
     SparseMatrixCSC(mA, nB, colptrC, rowvalC, nzvalC)
 end
 # Gustavsen's matrix multiplication algorithm revisited
-function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
-                  sortindices::Symbol = :sortcols) where {Tv,Ti}
+function spmatmul(A::SparseMatrixCSCUnion{Tv,Ti}, B::SparseMatrixCSCUnion{Tv,Ti}) where {Tv,Ti}
     mA, nA = size(A)
     nB = size(B, 2)
     nA == size(B, 1) || throw(DimensionMismatch())
 
     rowvalA = rowvals(A); nzvalA = nonzeros(A)
     rowvalB = rowvals(B); nzvalB = nonzeros(B)
-    nnzC = estimate_mulsize(mA, nnz(A), nA, nnz(B), nB) * 11 ÷ 10
+    nnzC = max(estimate_mulsize(mA, nnz(A), nA, nnz(B), nB) * 11 ÷ 10, mA)
     colptrC = Vector{Ti}(undef, nB+1)
     rowvalC = Vector{Ti}(undef, nnzC)
     nzvalC = Vector{Tv}(undef, nnzC)
@@ -275,6 +274,7 @@ function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
     @inbounds begin
         ip = 1
         xb = fill(false, mA)
+        x = Vector{Tv}(undef, mA)
         for i in 1:nB
             if ip + mA - 1 > nnzC
                 nnzC += max(mA, nnzC>>2)
@@ -290,29 +290,41 @@ function spmatmul(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixCSC{Tv,Ti};
                     nzC = nzvalA[kp] * nzB
                     k = rowvalA[kp]
                     if xb[k]
-                        nzvalC[k+k0] += nzC
+                        #nzvalC[k+k0] += nzC
+                        x[k] += nzC
                     else
-                        nzvalC[k+k0] = nzC
+                        #nzvalC[k+k0] = nzC
+                        x[k] = nzC
                         xb[k] = true
                         rowvalC[ip] = k
                         ip += 1
                     end
                 end
             end
-            if ip > ip0
+            nnzi = ip - ip0
+            if nnzi > 0
                 if prefer_sort(ip-k0, mA)
-                    sort!(rowvalC, ip0, ip-1, QuickSort, Base.Order.Forward)
+                    alg = nnzi <= Base.Sort.SMALL_THRESHOLD+1 ? InsertionSort : QuickSort
+                    #sort!(rowvalC, ip0, ip-1, QuickSort, Base.Order.Forward)
+                    sort!(rowvalC, ip0, ip-1, alg, Base.Order.Forward)
                     for vp = ip0:ip-1
                         k = rowvalC[vp]
                         xb[k] = false
-                        nzvalC[vp] = nzvalC[k+k0]
+                        #nzvalC[vp] = nzvalC[k+k0]
+                        nzvalC[vp] = x[k]
+                    end
+                elseif nnzi == mA+2
+                    for k = 1:mA
+                        xb[k] = false
+                        rowvalC[k+k0] = k
                     end
                 else
                     for k = 1:mA
                         if xb[k]
                             xb[k] = false
                             rowvalC[ip0] = k
-                            nzvalC[ip0] = nzvalC[k+k0]
+                            #nzvalC[ip0] = nzvalC[k+k0]
+                            nzvalC[ip0] = x[k]
                             ip0 += 1
                         end
                     end
@@ -346,4 +358,70 @@ prefer_sort(nz::Integer, m::Integer) = m > 6 && 3 * ilog2(nz) * nz < m
 
 # minimal number of bits required to represent integer; ilog2(n) >= log2(n)
 ilog2(n::Integer) = sizeof(n)<<3 - leading_zeros(n)
+
+function spmatmul(aA::Adjoint{Tv,<:SparseMatrixCSCUnion{Tv,Ti}}, B::SparseMatrixCSCUnion{Tv,Ti}) where {Tv,Ti}
+    A = parent(aA)
+    mA, nA = size(A)
+    nB = size(B, 2)
+    nA == size(B, 1) || throw(DimensionMismatch())
+    
+    rowvalA = rowvals(A); nzvalA = nonzeros(A)
+    rowvalB = rowvals(B); nzvalB = nonzeros(B)
+    nnzC = max(estimate_mulsize(mA, nnz(A), nA, nnz(B), nB) * 11 ÷ 10, mA)
+    colptrC = Vector{Ti}(undef, nB+1)
+    rowvalC = Vector{Ti}(undef, nnzC)
+    nzvalC = Vector{Tv}(undef, nnzC)
+
+    @inbounds begin
+        akku = Tv(0)
+        ip = 1
+        x = Vector{Tv}(undef, mA)
+        xb = fill(false, mA)
+        for i in 1:nB
+            if ip + nA - 1 > nnzC
+                nnzC += max(mA, nnzC>>2)
+                resize!(rowvalC, nnzC)
+                resize!(nzvalC, nnzC)
+            end
+            colptrC[i] = ip
+            rangeB = nzrange(B, i)
+            isempty(rangeB) && continue
+            for j = rangeB
+                rB = rowvalB[j]
+                x[rB] = nzvalB[j]
+                xb[rB] = true
+            end
+            for k in 1:nA
+                valid = false
+                for j = nzrange(A, k)
+                    rB = rowvalA[j]
+                    if xb[rB]
+                        nzv = nzvalA[j] * x[rB] 
+                        if valid
+                            akku += nzv
+                        else
+                            valid = true
+                            akku = nzv
+                        end
+                    end
+                end
+                if valid
+                    rowvalC[ip] = k
+                    nzvalC[ip] = akku
+                    ip += 1
+                end
+            end
+            for j in rangeB
+                rB = rowvalB[j]
+                xb[rB] = false
+            end
+        end
+        colptrC[nB+1] = ip
+    end
+
+    resize!(rowvalC, ip - 1)
+    resize!(nzvalC, ip - 1)
+    C = SparseMatrixCSC(nA, nB, colptrC, rowvalC, nzvalC)
+    return C
+end
 
