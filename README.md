@@ -47,18 +47,18 @@ This project was set up in order to improve this situation
 
 ##### Selected Operations for Wrapped Types
 
-  1. `sparse(A::X)` for all wrapped types X should be as efficient as    `sparse(::Adjoint(SparseMatrixCSC))`
+  1. `sparse(A::X)` for all wrapped types X should be as efficient as `sparse(::Adjoint(SparseMatrixCSC))`
   2. all unary and binary operations with wrapped types of sparse matrices should take
   advantage of the sparsity structure, as far as efficient
   3. if no specialized algorithms are availble, in the case of wrapped sparse matrices,
   the fallback should avoid the generic methods for `AbstractMatrix`, but use corresponding methods for `AbstractSparseMatrix`, after converting to `SparseMatrixCSC`.
 
-##### Issues
+##### Issues (an uncomplete list of unsolved problems - see combinitions.jl)
 
   1. `Adjoint(Transpose(A)) == conj.(A)`
   2. `Hermitian(A)` when `diag(A)` is not real: throw exception?
-  3. `Symmetric(Symmetric(A, :U), :L)` should be `Diagonal(diag(A))`
-  4. `Symmetric(Hermitian(A, :U), :L)` should be `Diagonal(real(diag(A)))`
+  3. `Symmetric(Symmetric(A, :U), :L)` should be `Symmetric(A, :U)`
+  4. `Symmetric(Hermitian(A, :U), :L)` should be `conj.Hermitian(A. :U)`
   5. `view(Symmetric(A), I, J)` should be `Symmetric(view(A, I, J))` if `I==J`, 
   `view(A, I, J)` if `I,J` don't traverse diagonal, and fall back to `sparse(view(Symmetric(A),I,J)))` otherwise.
 
@@ -79,6 +79,7 @@ U5  |opnorm  | `LinearAlgebra` standard function
 U6  |*¹      | scalar multiplication
 U7  |*²      | multiply with dense or sparse vector
 
+to be continued
 
 ##### Binary Operations
 
@@ -87,6 +88,7 @@ No  | Name   | Description
 B1  | ==     | equality of 2 wrapped sparse matrices
 B2  | +,-,*  | arithmetic operations  
 
+to be continued
 
 
 
