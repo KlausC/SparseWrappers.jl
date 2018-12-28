@@ -24,9 +24,6 @@ iswrsparse(T::Type) = walk_wrapper(_iswrsparse, T)
 _iswrsparse(::Type) = false
 _iswrsparse(::Type{<:AbstractSparseArray}) = true
 
-iswrappedsparse(::Type{<:AbstractSparseArray}) = false
-iswrappedsparse(T::Type) = iswrsparse(T)
-
 indextype(::T) where T<:AbstractArray = indextype(T)
 indextype(T::Type) = walk_wrapper(_indextype, T)
 _indextype(::Type{<:AbstractSparseArray{<:Any,Ti}}) where Ti = Ti
