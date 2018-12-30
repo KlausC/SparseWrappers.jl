@@ -36,4 +36,4 @@ end
 @test depth(A) == 0
 @test depth([1.7; 0]) == 0
 
-
+@test sparse([]') == spzeros(Any, 1, 0)

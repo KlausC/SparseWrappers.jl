@@ -133,15 +133,18 @@ Return `A` if it is a `SparseMatrixCSC` or `SparseVector`, otherwise convert to 
 in an efficient manner.
 """
 function sparsecsc(@nospecialize A::AbstractArray)
-    if iswrsparse(A) && depth(A) >= 1
-        sparsecsc(inflate(A))
+    if iswrsparse(A)
+        if depth(A) >= 1
+            sparsecsc(inflate(A))
+        else
+            A
+        end
     else
-        sparse_aaf(A)
+        Tv = eltype(A)
+        invoke(SparseMatrixCSC{Tv,Int}, Tuple{AbstractMatrix}, A)
     end
 end
 
-sparse_aaf(A::AbstractArray) = sparse(A)
-sparse_aaf(A::SparseMatrixCSC) = A
 sparsecsc(A::SparseVector) = A
 sparsecsc(A::UpperTriangular{T,<:AbstractSparseMatrix}) where T = triu(A.data)
 sparsecsc(A::LowerTriangular{T,<:AbstractSparseMatrix}) where T = tril(A.data)
@@ -159,11 +162,8 @@ sparsecsc(A::Transpose{<:Any,<:LowerTriangularPlain}) = _sparse(nzrangelo, trans
 sparsecsc(A::Adjoint{<:Any,<:UpperTriangularPlain}) = _sparse(nzrangeup, adjoint, A)
 sparsecsc(A::Adjoint{<:Any,<:LowerTriangularPlain}) = _sparse(nzrangelo, adjoint, A)
 
-function sparsecsc(A::UnitUpperTriangular{<:Any,<:SparseMatrixCSC})
-    _sparse(nzrangeup, A, true)
-end
-function sparsecsc(A::UnitLowerTriangular{<:Any,<:SparseMatrixCSC})
-    _sparse(nzrangelo, A, true)
+function sparsecsc(A::AbstractTriangular{<:Any,<:SparseMatrixCSC})
+    _sparse(nzrangeup, A)
 end
 function sparsecsc(A::Symmetric{<:Any,<:SparseMatrixCSC})
     _sparse(A.uplo == 'U' ? nzrangeup : nzrangelo, transpose, A)
@@ -180,12 +180,13 @@ function sparsecsc(S::Conjugate{<:Any,<:SparseMatrixCSC{Tv,Ti}}) where {Tv,Ti}
 end
 
 # 2 cases: Unit(Upper|Lower)Triangular{Tv,SparseMatrixCSC}
-function _sparse(fnzrange::Function, A::AbstractTriangular{Tv}, isunit::Bool) where {Tv}
+function _sparse(fnzrange::Function, A::AbstractTriangular{Tv}) where {Tv}
     S = A.data
     rowval = rowvals(S)
     nzval = nonzeros(S)
     m, n = size(S)
     Ti = eltype(rowval)
+    unit = sA isa Union{UnitUpperTriangular,UnitLowerTriangular}
     newcolptr = Vector{Ti}(undef, n+1)
     newrowval = Vector{Ti}(undef, nnz(S))
     newnzval = Vector{Tv}(undef, nnz(S))
@@ -194,19 +195,19 @@ function _sparse(fnzrange::Function, A::AbstractTriangular{Tv}, isunit::Bool) wh
     newk = 1
     @inbounds for j = 1:n
         newkk = newk
-        if isunit
+        if unit
             newk += !uplo
         end
         r = fnzrange(S, j); r1 = r.start; r2 = r.stop
         for k = r1:r2
             i = rowval[k]
-            if i != j || i == j && !isunit
+            if i != j || i == j && !unit
                 newrowval[newk] = i
                 newnzval[newk] = nzval[k]
                 newk += 1
             end
         end
-        if isunit
+        if unit
             uplo && (newkk = newk)
             newrowval[newkk] = j
             newnzval[newkk] = one(Tv)
