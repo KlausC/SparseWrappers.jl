@@ -1,6 +1,7 @@
 export symmetric, hermitian, conjugate, diagonal, upper_triangular, lower_triangular
 export unit_upper_triangular, unit_lower_triangular
 
+#=
 struct UniversalWrapper{T,S,F,C,D} <:AbstractMatrix{T}
     parent::S
 end
@@ -17,6 +18,7 @@ mapper(A::UniversalWrapper{T,<:Any,<:Any,C,:R}, i, j) where {T,C} = aij -> i == 
 
 Base.size(A::UniversalWrapper) = indexflip(A, size(A.parent))
 Base.getindex(A::UniversalWrapper, i, j) = mapper(A, i, j)(getindex(A.parent, indexflip(A, i, j)...))
+=#
 
 """
     combine wrappers of the following kinds to achieve

@@ -118,7 +118,7 @@ toggle(s::Symbol) = s == :U ? :L : :U
 
 #include("nziterators.jl")
 #include("operations.jl")
-include("sparsify.jl")
+#include("sparsify.jl")
 include("combine.jl")
 #include("semigroup.jl")
 include("linalg.jl")
@@ -126,5 +126,6 @@ include("fallback.jl")
 include("views.jl")
 include("timings.jl")
 include("mmatrix.jl")
+include("universal.jl")
 
 end # module
