@@ -23,7 +23,7 @@ struct MMatrix{Tv,N,S<:AbstractArray{<:Any,N},B,M,T,D} <:AbstractArray{Tv,N}
 end
 
 const StorageMatrix{Tv} = Union{StridedArray{Tv},SparseMatrixCSC{Tv}}
-const StorageArray{Tv} = Union{StorageArray{Tv},SparseVector{Tv}}
+const StorageArray{Tv} = Union{StorageMatrix{Tv},SparseVector{Tv}}
 
 Base.parent(ma::MMatrix) = wparent(ma)
 Base.show(io::IO, ma::MMatrix) = show(io, wparent(ma))
