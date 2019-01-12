@@ -107,7 +107,6 @@ for wr in (Symmetric, Hermitian,
            Transpose, Adjoint, SubArray, Conjugate,
            Bidiagonal, Tridiagonal, SymTridiagonal, HermiteTridiagonal)
 
-    @eval unwrap(A::$wr) = iswrsparse(A) ? convert(SparseMatrixCSC, A) : convert(Array, A)
     @eval SparseMatrixCSC(A::$wr) = sparsecsc(A)
     @eval SparseMatrixCSC{Tv}(A::$wr{Tv}) where Tv = sparsecsc(A)
     @eval SparseMatrixCSC{Tv}(A::$wr) where Tv = SparseMatrixCSC{Tv}(sparsecsc(A))
@@ -121,6 +120,7 @@ In case A is a wrapper type (`SubArray, Symmetric, Adjoint, SubArray, Triangular
 convert to `Matrix` or `SparseMatrixCSC`, depending on final storage type of A.
 For other types return A itself.
 """
+unwrap(A::AbstractArray) = iswrsparse(A) ? convert(SparseMatrixCSC, A) : convert(Array, A)
 unwrap(A::Any) = A
 
 import Base.copy
