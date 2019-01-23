@@ -9,7 +9,7 @@ sparseaccess(A::SubArray) = XSubArray(A)
 nzvalview(S::SparseMatrixCSCView) = view(S.parent.nzval, first(nzrange(S, first(axes(S, 2)))):last(nzrange(S, last(axes(S, 2)))))
 
 # 
-nonzeros(S::SubArray) = nonzeros(S.parent)
+nonzeros(S::SubArray{<:Any,2,<:SparseMatrixCSC}) = nonzeros(S.parent)
 nonzeros(S::XSubArray{<:Any,<:Integer,2}) = nonzeros(S.sub)
 
 nnz(S::SparseMatrixCSCView) = nzrange(S.parent, last(S.indices[2]))[end] - nzrange(S.parent, first(S.indices[2]))[1] + 1

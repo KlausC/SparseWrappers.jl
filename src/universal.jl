@@ -33,7 +33,10 @@ otherwise:
 """
 struct UniversalWrapper{Tv,P<:AbstractMatrix{Tv},Up,Di,Lo} <: AbstractMatrix{Tv}
    parent::P
-   UniversalWrapper{Tv,P,Up,Di,Lo}(p::P) where {Tv,P<:AbstractMatrix{Tv},Up,Di,Lo} = new{Tv,P,Up,Di,Lo}(p)
+   function UniversalWrapper{Tv,P,Up,Di,Lo}(p::P) where {Tv,P<:AbstractMatrix{Tv},Up,Di,Lo}
+       check_updilo(Up, Di, Lo)
+       new{Tv,P,Up,Di,Lo}(p)
+   end
 end
 
 function UniversalWrapper{Tv1,P1,Up1,Di1,Lo1}(p::UniversalWrapper{Tv,P,Up2,Di2,Lo2}) where {Tv1,P1,Up1,Di1,Lo1,Tv,P,Up2,Di2,Lo2}
@@ -56,6 +59,8 @@ uppersymm(p::UniversalWrapper) = universal(1, 1, 2, p)
 lowersymm(p::UniversalWrapper) = universal(2, 1, 1, p)
 upperherm(p::UniversalWrapper) = universal(1, 2, -2, p)
 lowerherm(p::UniversalWrapper) = universal(-2, 2, 1, p)
+conjugate(p::UniversalWrapper) = universal(-1, -1, -1, p)
+
 
 for gen in (:transpose, :adjoint, :unituppertria, :unitlowertria, :uppertria, :lowertria,
             :uppersymm, :lowersymm, :upperherm, :lowerherm)
@@ -100,6 +105,12 @@ function Base.getindex(U::UniversalWrapper{Tv,<:Any,Up,Di,Lo}, i::Integer,j::Int
         Di ==  2 ? real(A[i,i]) :
         one(A[i,i])
     end
+end
+
+function check_updilo(Up::Integer, Di::Integer, Lo::Integer)
+    Up == 0 || Lo == 0 || Up + Lo != 0 || throw(ArgumentError("Up/Lo = $Up/$Lo invalid"))
+    # Up == 0 || Lo == 0 || Di != 2 || abs(Up+Lo) == 1 || throw(ArgumentError("Up/Di/Lo = $Up/$Di/$Lo invalid"))
+    # Di != 0 || Up == 0 || Lo == 0 || throw(ArgumentError("Up/Di/Lo = $Up/$Di/$Lo invalid"))
 end
 
 function convert_element(u::UniversalWrapper{<:Any,<:Any,Up,Di,Lo}, a::X) where {Up,Di,Lo,Tv,X<:UniversalWrapper{Tv}}
