@@ -146,7 +146,7 @@ end
     Di1 ==  2 ? Di2 == 0 ? 0 : Di1 :
     0
 end
-@inline cominv(Up) = ifelse(Up == 0, 0, flipsign(3 - abs(Up), Up))
+@inline cominv(Up) = sign(Up) * 3 - Up
 
 function compose(::Type{<:Real}, arg...)
     Up, Di, Lo = compose(arg...)
@@ -190,13 +190,9 @@ end
 function norm_conj(U::Type{<:UniversalWrapper{T,S,Up,Di,Lo}}) where {T,S,Up,Di,Lo}
    V = universal(-1,-1,-1, U)
    Up2, Di2, Lo2 = parameters(V)
-   n = count( (Up2, Di2, Lo2) .< 0 ) - count( (Up, Di, Lo) .< 0 )
-   n < 0 ? V : n > 0 ? U :
-   Up > Up2 ? U : Up < Up2 ? V :
-   Lo > Lo2 ? U : Lo < Lo2 ? V :
-   Di > Di2 ? U : Di < Di2 ? V : U
+   cmp(u, d, l) = (count((u,d,l) .< 0), count((u,d,l) .== -1), d, u, l) 
+   cmp(Up, Di, Lo) < cmp(Up2, Di2, Lo2) ? U : V
 end
-
 
 check_well_defined() = isempty(not_well_defined())
 function not_well_defined()
@@ -237,16 +233,27 @@ function non_associatives()
     res
 end
 
-check_conjugate_commutative() = isempty(not_commuting_with_conj())
-function not_commuting_with_conj()
-    res = []
-    c = universal(-1, -1, -1, Complex) 
-    for updilo in all_parameters(Complex)
-        u = universal(updilo, Complex)
-        if u ∘ c != c ∘ u
-            push!(res, u)
-        end
-    end
-    res
+check_conjugate_commutative() = relation_empty(!commutes, universal(-1,-1,-1,Complex))
+function relation(f::Function, u::Type{<:UniversalWrapper})
+    [v for v in universal.(all_parameters(Complex), Complex) if f(u, v) ]
 end
-∘
+
+relation_empty(f::Function, u::Type{<:UniversalWrapper}) = isempty(relation(f, u))
+
+function commutator()
+    [v for v in universal.(all_parameters(Complex), Complex) if relation_empty(!commutes, v)]
+end
+
+function inverses(u::Type{<:UniversalWrapper})
+    e = universal(1, 1, 1, Complex)
+    [v for v in universal.(all_parameters(Complex), Complex) if  v ∘ u == e == u ∘ v]
+end
+
+function invertibles()
+    [v for v in universal.(all_parameters(Complex), Complex) if !isempty(inverses(v))]
+end
+
+function commutes(u::Type{<:UniversalWrapper}, v::Type{<:UniversalWrapper})
+    u ∘ v == v ∘ u
+end
+
